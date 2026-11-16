@@ -213,7 +213,16 @@ do
   AU.set("share", true); AU.set("autoInvite", true)
   W.sent = {}
   W.fire("QUEST_ACCEPTED", 4, 555) -- Classic: questLogIndex, questID
-  H.ok(did(W, "SelectQuestLogEntry") and did(W, "QuestLogPushQuest"), "the leader shares a quest it accepts")
+  -- WoW Forever blocks sharing from this event (ADDON_ACTION_BLOCKED): the quest waits for /wbxshare (a key press)
+  H.eq(did(W, "QuestLogPushQuest"), nil, "not shared from the event itself")
+  H.eq(#AU.shareQueue, 1, "the quest waits to be shared")
+  H.ok(tostring(AU.last):find("type /wbxshare to share it", 1, true) ~= nil, "it says how to share it: " .. tostring(AU.last))
+  W.env.GetNumQuestLogEntries = function() return 1 end
+  W.env.GetQuestLogTitle = function(i) return "Quest", nil, nil, nil, nil, nil, nil, 555 end
+  W.env.SlashCmdList.WOWBOXERSHARE("")
+  H.ok(did(W, "SelectQuestLogEntry") and did(W, "QuestLogPushQuest"), "/wbxshare shares it")
+  H.eq(#AU.shareQueue, 0, "and the queue is empty")
+  W.env.GetNumQuestLogEntries, W.env.GetQuestLogTitle = nil, nil
   local function qls() local t = {}; for _, m in ipairs(W.sent) do if m.prefix == "WBXA" and m.msg:find("^QL|") then t[#t + 1] = m.msg end end return t end
   H.eq(#qls(), 0, "the quest list waits a moment (several accepts in a row become one message)")
   W.flush()
