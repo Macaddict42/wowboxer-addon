@@ -3,7 +3,8 @@
   - targets: the conditional chain of its /cast, /castsequence (and, on enemy keys, /startattack and /petattack) lines
     is replaced by the player's chain. Targets are stored by MEANING ("Bo's pet", "the leader"), never by unit, and
     turned into this client's party units each time the keys are built – so a regroup only needs the usual Update.
-  - options: reset=, /startattack on/off, /petattack on/off, a modifier line (Shift = myself …).
+  - options: reset=, /startattack on/off, /petattack on/off, a modifier line (Shift = myself …), and on enemy keys
+    targetenemy (/targetenemy [noexists]: with no target, the nearest enemy first).
   - text: the player's own macro text (the last resort); such a key is frozen: level-ups do not change it.
   Every result still goes through Rules.validateMacro (255, whitelist, WBX names). Nothing here is ever run as code,
   and share strings never carry any of it as macro text (hard rule 3). ]]
@@ -47,7 +48,7 @@ local function cleanTarget(t)
   return x
 end
 O.cleanTarget = cleanTarget
---- One override {targets = {…}, mod, reset, startattack, petattack} or {text = "…"}; nil when empty or broken.
+--- One override {targets = {…}, mod, reset, startattack, petattack, targetenemy} or {text = "…"}; nil when empty or broken.
 function O.clean(ov)
   if type(ov) ~= "table" then return nil end
   if type(ov.text) == "string" then
@@ -64,7 +65,8 @@ function O.clean(ov)
   if contains(O.RESETS, ov.reset) then x.reset = ov.reset end
   if ov.startattack == true or ov.startattack == false then x.startattack = ov.startattack end
   if ov.petattack == true or ov.petattack == false then x.petattack = ov.petattack end
-  if #x.targets == 0 and not x.mod and not x.reset and x.startattack == nil and x.petattack == nil then return nil end
+  if ov.targetenemy == true then x.targetenemy = true end
+  if #x.targets == 0 and not x.mod and not x.reset and x.startattack == nil and x.petattack == nil and not x.targetenemy then return nil end
   return x
 end
 function O.cleanAll(t)
@@ -233,6 +235,12 @@ function O.apply(body, ov, ctx)
     end
     out = kept
   end
+  -- no target at all: the nearest enemy first (after the assist line below, so someone's target comes first)
+  if ov.targetenemy and help ~= true then
+    local has = false
+    for _, l in ipairs(out) do if smatch(l, "^/targetenemy") then has = true end end
+    if not has then addAfterTip("/targetenemy [noexists]") end
+  end
   if asTarget then
     local t, name = asTarget.t, asTarget.name
     local line
@@ -269,6 +277,7 @@ function O.summary(ov, ctx)
   if ov.text then return "your own macro text" end
   local parts = {}
   if ov.mod then parts[#parts + 1] = ov.mod .. " = me" end
+  if ov.targetenemy then parts[#parts + 1] = "nearest enemy when none" end
   for _, t in ipairs(ov.targets or {}) do parts[#parts + 1] = O.label(t, ctx) end
   return tconcat(parts, " > ")
 end

@@ -347,6 +347,15 @@ local function editorFrame(parent)
     W.tip(c, function() return c.labelText or "" end, function() return c.about or "" end)
     f.lineChecks[i] = part(c)
   end
+  -- your own line, not one WoWBoxer adds: no target = the nearest enemy first (enemy macros)
+  f.tgtEnemy = W.check(f, "Nearest enemy", function(_, v)
+    f.opts.targetenemy = v and true or nil
+    f.touched = true
+    A.refreshEditor()
+  end)
+  W.tip(f.tgtEnemy, "Nearest enemy", "Adds /targetenemy [noexists]: when you have no target, the macro targets the nearest enemy first. " ..
+    "It never changes a target you have (a castsequence with reset=target is not reset). Taking someone's target comes first.")
+  part(f.tgtEnemy)
   f.linesNone = W.text(f, "GameFontHighlightSmall", 10, W.MUTED)
   f.linesNone:SetPoint("LEFT", f.linesHead, "RIGHT", 6, 0)
   f.linesNone:SetText("none: only the spells you picked")
@@ -661,7 +670,7 @@ function A.openEditor(parent, name, label)
   f.targets, f.opts = {}, {}
   local src = (ov and ov.targets and #ov.targets > 0) and ov.targets or O().fromBody(base, f.ctx)
   for i, t in ipairs(src) do f.targets[i] = copy(t) end
-  for _, k in ipairs({ "mod", "reset", "startattack", "petattack" }) do f.opts[k] = ov and ov[k] end
+  for _, k in ipairs({ "mod", "reset", "startattack", "petattack", "targetenemy" }) do f.opts[k] = ov and ov[k] end
   -- the extra lines this macro has, ticked as they are now
   f.lineList = (d.rebuild and ns.Macros.linesOf(d, Core().cdb.keyLines)) or {}
   f.lines, f.linesOrig = {}, {}
@@ -798,6 +807,17 @@ function A.refreshLines()
     c:SetShown(x ~= nil and not spells)
   end
   f.linesNone:SetShown(#list == 0 and not spells)
+  -- Nearest enemy: after the last extra line (enemy macros)
+  local te = f.tgtEnemy
+  if te then
+    local after = f.linesHead
+    if #list == 0 then after = f.linesNone else after = (f.lineChecks[math.min(#list, #f.lineChecks)] or {}).label or f.linesHead end
+    te:ClearAllPoints()
+    te:SetPoint("LEFT", after, "RIGHT", 12, 0)
+    if te.wbxSkinned and te.SetHitRectInsets then te:SetHitRectInsets(0, -math.ceil((te.label:GetStringWidth() or 0) + 4), 0, 0) end
+    te:SetChecked(f.opts and f.opts.targetenemy and true or false)
+    te:SetShown(not spells and f.help ~= true)
+  end
 end
 --- The preview at size 9, a step smaller (down to 7) when a long macro (wand line, many targets) needs more lines than fit.
 function A.fitPreview(fs, body)

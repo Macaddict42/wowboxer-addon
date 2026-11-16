@@ -133,6 +133,33 @@ Core.setOverride(NAME, nil)
 for _, it in ipairs(Core.compute().macros.items) do if it.name == NAME then st = it.status end end
 H.eq(st, "update", "Back to WoWBoxer's version unfreezes it (the new level's macro)")
 
+-- Nearest enemy: /targetenemy [noexists] on enemy keys, after taking someone's target
+Core.setOverride(dps.name, { targets = { { who = "leadertarget", help = false, nodead = true } }, targetenemy = true })
+local te = desired(dps.name).body
+H.ok(te:find("\n/assist [noharm][dead] Dorin\n/cleartarget [help]\n/targetenemy [noexists]\n", 1, true) ~= nil,
+  "nearest enemy right after taking the leader's target: " .. te)
+H.eq(select(2, te:gsub("/targetenemy", "")), 1, "one /targetenemy line")
+Core.setOverride(dps.name, { targetenemy = true })
+H.ok(desired(dps.name).body:find("\n/targetenemy [noexists]\n", 1, true) ~= nil, "also on its own (no targets of yours)")
+H.eq(O.clean({ targetenemy = true }).targetenemy, true, "kept when it is the only option")
+Core.setOverride(NAME, { targets = { { who = "mouseover", help = true, nodead = true } }, targetenemy = true })
+H.ok(not desired(NAME).body:find("/targetenemy", 1, true), "never on a friendly (heal) key")
+-- the editor: a Nearest enemy tick for enemy macros
+local A = ns.Advanced
+ns.UI.Open("keys")
+A.openEditor(ns.UI.panels.keys, dps.name, dps.label)
+A.showSection("target")
+H.ok(A.ef.tgtEnemy:IsShown() and A.ef.tgtEnemy:GetChecked(), "the editor shows the tick, ticked as saved")
+A.ef.tgtEnemy:Click()
+H.ok(not A.ef.body:find("/targetenemy", 1, true), "unticked: the preview has no /targetenemy")
+A.ef.tgtEnemy:Click()
+H.ok(A.ef.body:find("/targetenemy [noexists]", 1, true) ~= nil, "ticked: the preview has it")
+A.openEditor(ns.UI.panels.keys, NAME, NAME)
+A.showSection("target")
+H.ok(not A.ef.tgtEnemy:IsShown(), "no tick on a friendly macro")
+A.ef:Hide()
+Core.setOverride(dps.name, nil); Core.setOverride(NAME, nil)
+
 -- the engine is untouched; share strings carry no overrides
 Core.alsoHeal(NAME, "Bo")
 local str = ns.Share.export(s, {})
