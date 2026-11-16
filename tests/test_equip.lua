@@ -21,7 +21,7 @@ local function boot(cls)
   env.GetItemInfo = function(l)
     local it = W.items[l]
     if not it or it.uncached then return nil end
-    return it.name, l, it.quality or 2, it.ilvl or 20, 15, "Armor", "Mail", 1, it.loc
+    return it.name, l, it.quality or 2, it.ilvl or 20, it.minLevel or 15, "Armor", "Mail", 1, it.loc
   end
   env.GetItemStats = function(l) local it = W.items[l]; return it and it.stats end
   local function lines(l)
@@ -192,7 +192,7 @@ end
 do
   local W, ns = onBoot()
   W.inv[6] = item(W, 500, "Old Belt", "INVTYPE_WAIST", { ITEM_MOD_STRENGTH_SHORT = 3 }); ns.Equip.noteWorn()
-  local high = item(W, 501, "High Belt", "INVTYPE_WAIST", { ITEM_MOD_STRENGTH_SHORT = 9 }, { red = true })
+  local high = item(W, 501, "High Belt", "INVTYPE_WAIST", { ITEM_MOD_STRENGTH_SHORT = 9 }, { red = true, minLevel = 99 }) -- (too high: looked at again after a level-up)
   arrive(W, 1, high)
   H.eq(#W.equipped, 0, "red in the tooltip (level too high): not equipped")
   W.items[high].red = nil

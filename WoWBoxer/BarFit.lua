@@ -28,9 +28,9 @@ BF.BARS = {
   { key = "bottomRight", label = "Bottom Right bar (bar 3)", prefix = "MultiBarBottomRightButton" },
   { key = "right", label = "Right bar", prefix = "MultiBarRightButton" },
   { key = "left", label = "Right bar 2", prefix = "MultiBarLeftButton" },
-  { key = "bar5", label = "Action Bar 5", prefix = "MultiBar5Button" },
-  { key = "bar6", label = "Action Bar 6", prefix = "MultiBar6Button" },
-  { key = "bar7", label = "Action Bar 7", prefix = "MultiBar7Button" },
+  { key = "bar5", label = "Action Bar 6", prefix = "MultiBar5Button" },
+  { key = "bar6", label = "Action Bar 7", prefix = "MultiBar6Button" },
+  { key = "bar7", label = "Action Bar 8", prefix = "MultiBar7Button" },
   { key = "menu", label = "Bag and menu buttons", names = {
     "CharacterMicroButton", "SpellbookMicroButton", "PlayerSpellsMicroButton", "TalentMicroButton", "ProfessionMicroButton",
     "AchievementMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "GuildMicroButton", "WorldMapMicroButton",
@@ -280,17 +280,26 @@ function BF.summary(m)
 end
 
 --- Measure, store in the bridge, log when it changed. Safe to call any time (reads only).
+--- A minimised or background window reports a tiny size (e.g. 670x377): nothing to measure or fit there.
+function BF.minimised()
+  if not GetPhysicalScreenSize then return false end
+  local _, h = GetPhysicalScreenSize()
+  return type(h) == "number" and h > 0 and h < 480
+end
 function BF.update(reason)
   local Core = ns.Core
   if not (Core and Core.db) then return nil end
+  if reason ~= "/wbx barfit" and BF.minimised() then return nil end
   local ok, m = pcall(BF.measure)
   if not ok then Core.log("error", "bar measure: " .. tostring(m)); return nil end
   if not m then return nil end
   local b = type(Core.db.bridge) == "table" and Core.db.bridge or {}
   b.bars = m
   Core.db.bridge = b
+  -- logged when the bars changed, not when only the window size did (every alt-tab wrote a line)
   local line = BF.summary(m)
-  if line ~= BF.lastLine then BF.lastLine = line; Core.log("info", line .. " (" .. tostring(reason) .. ")") end
+  local key = line:gsub("^bars: window %S+, ", "bars: ")
+  if key ~= BF.lastLine then BF.lastLine = key; Core.log("info", line .. " (" .. tostring(reason) .. ")") end
   return m
 end
 
@@ -815,6 +824,7 @@ end
 --- Fit again a moment later (many events come at once; Blizzard's own layout settles first).
 function BF.request(reason)
   if ns.Probe then ns.Probe.note("fit", reason) end
+  if BF.minimised() then return end -- never re-lay the bars for a minimised window
   if BF.waiting then return end
   BF.waiting = true
   local function run()

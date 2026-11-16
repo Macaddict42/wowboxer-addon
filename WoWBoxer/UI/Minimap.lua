@@ -170,6 +170,7 @@ end
 
 -- ------------------------------------------------------------------ Addon Compartment (TOC: AddonCompartmentFunc...)
 function _G.WoWBoxer_OnAddonCompartmentClick(_, button)
+  if type(button) == "table" then button = button.buttonName end -- newer clients pass the menu's input data
   if button == "RightButton" then MM.ShowMenu(_G.AddonCompartmentFrame) else ns.UI.Toggle() end
 end
 function _G.WoWBoxer_OnAddonCompartmentEnter(_, frame)

@@ -334,14 +334,36 @@ local function questTitle(id)
   end
   return (type(t) == "string" and t ~= "") and t or ("#" .. tostring(id or "?"))
 end
+-- the game sometimes sends the same quest event twice: hand in, take the reward or accept once per quest
+local lastDone = {}
+local function doneRecently(kind, id) local l = lastDone[kind]; return id and id ~= 0 and l and l.id == id and now() - l.t < 3 end
+local function markDone(kind, id) lastDone[kind] = { id = id, t = now() } end
+function AU.questClosed() lastDone = {} end -- a new quest window starts fresh
+local function accept(id, title)
+  if doneRecently("accept", id) then return end
+  if call(G.AcceptQuest) then
+    AU.detailOpen = nil
+    markDone("accept", id)
+    if id and id ~= 0 then AU.did("Accepted quest " .. title .. ".") end
+  end
+end
 function AU.onQuestDetail()
   local id = questId()
   AU.detailOpen = id
   if not AU.on("quests") then return end
+  local title = questTitle(id) -- before accepting: afterwards the window is empty ("Accepted quest #1178")
+  -- a quest shared by a player: only from someone "Accept from" allows (it was accepted from anyone)
+  if G.UnitIsPlayer and C().safe(G.UnitIsPlayer("questnpc")) then
+    local who = C().unitName("questnpc")
+    if not AU.allowed("quests", who, true) then
+      Core().log("info", "auto: quest " .. title .. " shared by " .. tostring(who or "someone") .. " not accepted (Accept from)")
+      return
+    end
+  end
   if AU.isLeader() then
     -- the leader (owner, 5 Nov 2026): every quest a quest giver offers is taken; Share quests then shares it
     if skipShift("quest") then return end
-    if call(G.AcceptQuest) then AU.detailOpen = nil; AU.did("Accepted quest " .. questTitle(id) .. ".") end
+    accept(id, title)
     return
   end
   if not (AU.on("questAny") or (id and AU.leaderQuests[id]) or AU.questSharer()) then
@@ -353,7 +375,7 @@ function AU.onQuestDetail()
     return
   end
   if skipShift("quest") then return end
-  if call(G.AcceptQuest) then AU.detailOpen = nil; AU.did("Accepted quest " .. questTitle(id) .. ".") end
+  accept(id, title)
 end
 function AU.onQuestConfirm(name) -- an escort / shared start from a squad member
   if not AU.on("quests") or not AU.allowed("quests", name, true) or skipShift("quest") then return end
@@ -372,7 +394,9 @@ function AU.onQuestAccepted(a, b)
 end
 function AU.onQuestProgress()
   if not AU.on("turnin") or skipShift("turn in") then return end
-  if G.IsQuestCompletable and G.IsQuestCompletable() and call(G.CompleteQuest) then AU.did("Handed in " .. tostring(questId()) .. ".") end
+  local id = questId()
+  if doneRecently("turnin", id) then return end
+  if G.IsQuestCompletable and G.IsQuestCompletable() and call(G.CompleteQuest) then markDone("turnin", id); AU.did("Handed in " .. tostring(id) .. ".") end
 end
 --- The reward to take: 1 when there is no choice; else by rule (leader's choice / best vendor value / ask = nil).
 function AU.rewardIndex()
@@ -395,8 +419,10 @@ AU.completeOpen = false
 function AU.chooseReward()
   if not (AU.completeOpen and AU.on("turnin")) then return end
   if skipShift("reward") then return end
+  local id = questId()
+  if doneRecently("reward", id) then AU.completeOpen = false; return end
   local i = AU.rewardIndex()
-  if i and call(G.GetQuestReward, i) then AU.completeOpen = false; AU.did("Took reward " .. i .. " for quest " .. tostring(questId()) .. ".") end
+  if i and call(G.GetQuestReward, i) then AU.completeOpen = false; markDone("reward", id); AU.did("Took reward " .. i .. " for quest " .. tostring(id) .. ".") end
 end
 function AU.onQuestComplete() AU.completeOpen = true; AU.chooseReward() end
 --- Leader: tell the followers which reward it picked (hooked on GetQuestReward).
@@ -554,6 +580,9 @@ function AU.leaderChose(kind, index, text)
   if not (AU.isLeader() and C().inParty()) then return end
   if kind ~= "t" and choiceCount() <= 1 then return end -- single-option dialogs (vendors, trainers): nothing to sync
   if dangerous(text) then Core().log("info", "auto: dialog choice not synced (never: " .. tostring(text) .. ")"); return end
+  local key = kind .. "|" .. tostring(text)
+  if AU.lastChose and AU.lastChose.key == key and now() - AU.lastChose.t < 1 then return end -- (both gossip hooks fired)
+  AU.lastChose = { key = key, t = now() }
   AU.send("D", kind == "t" and "taxi" or (npcName() or ""), kind, index or 0, text or "")
 end
 --- A follower with the same window open picks the same; anything else is ignored.
@@ -577,7 +606,7 @@ function AU.applyDialog(npc, kind, index, text, from)
   if not (AU.window.gossip and AU.window.gossip == npc) then return false end -- not the same NPC window here
   if kind == "g" then
     for _, o in ipairs(AU.gossipOptions()) do
-      if o.text == text then
+      if clean(o.text) == text then -- the leader sends the option cleaned and cut to 60 characters
         local ok = GI and GI.SelectOption and pcall(GI.SelectOption, o.id) or call(G.SelectGossipOption, o.id)
         if ok then AU.did("Picked \"" .. text .. "\" like " .. from.name .. "."); return true end
       end
@@ -837,6 +866,15 @@ function AU.Init()
     local function optText(id) for _, o in ipairs(AU.gossipOptions()) do if o.id == id then return o.text end end end
     if GI and GI.SelectOption then pcall(hook, GI, "SelectOption", function(id) AU.leaderChose("g", id, optText(id)) end)
     elseif G.SelectGossipOption then pcall(hook, "SelectGossipOption", function(i) AU.leaderChose("g", i, optText(i)) end) end
+    -- the newer gossip window picks options by their index
+    if GI and GI.SelectOptionByIndex then
+      pcall(hook, GI, "SelectOptionByIndex", function(idx)
+        local ok, list = pcall(GI.GetOptions)
+        for _, o in ipairs(ok and list or {}) do
+          if o.orderIndex == idx then AU.leaderChose("g", o.gossipOptionID, o.name); return end
+        end
+      end)
+    end
     if GI and GI.SelectAvailableQuest then pcall(hook, GI, "SelectAvailableQuest", function(id) AU.leaderChose("a", id, tostring(id)) end)
     elseif G.SelectGossipAvailableQuest then pcall(hook, "SelectGossipAvailableQuest", function(i) AU.leaderChose("a", i, tostring(i)) end) end
     if GI and GI.SelectActiveQuest then pcall(hook, GI, "SelectActiveQuest", function(id) AU.leaderChose("c", id, tostring(id)) end)
@@ -868,7 +906,7 @@ f:SetScript("OnEvent", function(_, event, a, b, c, d)
     elseif event == "QUEST_REMOVED" then if AU.isLeader() then AU.sendQuestList() end
     elseif event == "QUEST_PROGRESS" then AU.onQuestProgress()
     elseif event == "QUEST_COMPLETE" then AU.onQuestComplete()
-    elseif event == "QUEST_FINISHED" then AU.completeOpen = false; AU.detailOpen = nil
+    elseif event == "QUEST_FINISHED" then AU.completeOpen = false; AU.detailOpen = nil; AU.questClosed()
     elseif event == "GOSSIP_SHOW" then AU.window.gossip = npcName(); AU.leaderTakeQuests(false)
     elseif event == "QUEST_GREETING" then AU.leaderTakeQuests(true)
     elseif event == "GOSSIP_CLOSED" then AU.window.gossip = nil

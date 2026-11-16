@@ -682,7 +682,9 @@ local function overMenu(m)
 end
 function W.closeMenus(except)
   for _, m in ipairs(W.menus) do if m ~= except and m:IsShown() then m:Hide() end end
-  if not except then
+  -- the game's own menus (a unit's right-click menu, a bag item's menu) are not ours: with the themed look WoWBoxer
+  -- only uses its own menus, so it leaves the game's alone (closing them at every pull broke the player's menus)
+  if not except and not W.themed() then
     if _G.CloseDropDownMenus then pcall(_G.CloseDropDownMenus) end
     local M = _G.Menu
     if type(M) == "table" and M.GetManager then pcall(function() M.GetManager():CloseMenus() end) end
@@ -736,7 +738,12 @@ function W.dialog(f, name)
     W.closeMenus()
     special(MAIN, false)
   end)
-  f:HookScript("OnHide", function() if not anyDialog() and _G[MAIN] then special(MAIN, true) end end)
+  -- back on the Esc list a frame later: never while the game is still walking that list for this same Esc
+  -- (adding it during the walk let one Esc close the dialog AND the main window)
+  f:HookScript("OnHide", function()
+    local function back() if not anyDialog() and _G[MAIN] then special(MAIN, true) end end
+    if C_Timer and C_Timer.After then C_Timer.After(0, back) else back() end
+  end)
   return f
 end
 

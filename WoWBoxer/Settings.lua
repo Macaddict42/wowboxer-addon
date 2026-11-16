@@ -28,7 +28,7 @@ ST.ITEMS = {
     function(v) return v == "1" and "Advanced" or "Standard" end },
   -- one switch for team messages and the team box (1.3.0; the old "tf" window switch is gone, an old "tf" is dropped)
   { "team", "Team status", function() return b2s(st().team ~= false) end,
-    function(v) local b = s2b(v); if b == nil then return false end st().team = b and nil or false; return true end },
+    function(v) local b = s2b(v); if b == nil then return false end st().team = ns.State.offOrNil(b); return true end }, -- ("b and nil or false" was always false)
   { "anim", "Animations", function() return b2s(st().animations ~= false) end,
     function(v) local b = s2b(v); if b == nil then return false end st().animations = b; return true end },
   { "strip", "Sequence strip", function() return b2s(st().seqStrip ~= false) end,

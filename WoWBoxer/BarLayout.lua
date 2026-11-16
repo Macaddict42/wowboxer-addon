@@ -541,7 +541,10 @@ function BL.fit(reason)
       BL.hinted = key
       c.print("Your action bars don't fit this window even at the smallest size. Make the window wider, move the chat up or turn off a bar.")
     end
-    log("info", string.format("bar layout: nothing fits %dx%d (%s)", BL.state.w, BL.state.h, tostring(plan.why)))
+    if BL.loggedNoFit ~= key then -- once per window size
+      BL.loggedNoFit = key
+      log("info", string.format("bar layout: nothing fits %dx%d (%s)", BL.state.w, BL.state.h, tostring(plan.why)))
+    end
     return BL.state
   end
   local ok, err = BL.save(info, m, plan)

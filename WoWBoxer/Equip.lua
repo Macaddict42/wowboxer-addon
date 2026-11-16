@@ -296,8 +296,35 @@ function E.question(d, it)
 end
 
 -- ------------------------------------------------------------------ bags and gear
-E.seen = {}       -- item links already in your bags, worn or answered: never asked about again
+E.seen = {}       -- (before the saved variables are loaded) items already in your bags, worn or answered
 E.waitLevel = {}  -- links too high (red) for now: looked at again after a level-up
+--- An item without the parts of its link that change with your level or spec: item id, random suffix, bonus ids.
+--- (The full link changes at every level-up, so every item looked new again and was asked about again.)
+function E.itemKey(link)
+  if type(link) ~= "string" then return link end
+  local str = link:match("item:([%-%d:]+)")
+  if not str then return link end
+  local f = {}
+  for x in (str .. ":"):gmatch("([^:]*):") do f[#f + 1] = x end
+  local bonus = {}
+  for i = 14, 13 + (tonumber(f[13]) or 0) do bonus[#bonus + 1] = f[i] or "" end
+  return (f[1] or "") .. ":" .. (f[7] or "") .. ":" .. table.concat(bonus, ",")
+end
+--- Seen items are kept per character across logins (answered "Keep in bag" really means "don't ask again").
+local function seenStore()
+  local cdb = Core() and Core().cdb
+  if not cdb then return E.seen end
+  if type(cdb.equipSeen) ~= "table" then cdb.equipSeen = {} end
+  return cdb.equipSeen
+end
+function E.isSeen(link) return seenStore()[E.itemKey(link)] ~= nil end
+function E.setSeen(link, on) seenStore()[E.itemKey(link)] = on and ((time and time()) or 1) or nil end
+local function waitStore()
+  local cdb = Core() and Core().cdb
+  if not cdb then return {} end
+  if type(cdb.equipWait) ~= "table" then cdb.equipWait = {} end
+  return cdb.equipWait
+end
 E.worn = {}       -- [invSlot] = link (to notice what you take off)
 E.asks = {}       -- queued questions
 E.pending = false -- a scan waits for combat to end
@@ -337,14 +364,14 @@ end
 function E.noteWorn()
   for s = 1, 19 do
     local l = invLink(s)
-    if E.worn[s] and E.worn[s] ~= l then E.seen[E.worn[s]] = true end
+    if E.worn[s] and E.worn[s] ~= l then E.setSeen(E.worn[s], true) end
     E.worn[s] = l
-    if l then E.seen[l] = true end
+    if l then E.setSeen(l, true) end
   end
 end
 --- The first scan after login: everything already in the bags counts as seen.
 function E.snapshot()
-  for b = 0, 4 do for s = 1, bagSlots(b) do local l = bagLink(b, s); if l then E.seen[l] = true end end end
+  for b = 0, 4 do for s = 1, bagSlots(b) do local l = bagLink(b, s); if l then E.setSeen(l, true) end end end
   E.noteWorn()
   E.ready = true
 end
@@ -358,7 +385,7 @@ end
 E.myRel = myRel
 
 --- Put on the item in bag/slot (only if it is still there). Returns true when the call went through.
-function E.equip(bag, slot, link, inv)
+function E.equip(bag, slot, link, inv, asked)
   if bagLink(bag, slot) ~= link then
     -- moved: find it again
     local found
@@ -369,8 +396,10 @@ function E.equip(bag, slot, link, inv)
   local CI = G.C_Item
   local f = (CI and CI.EquipItemByName) or G.EquipItemByName
   if not f then Core().log("warn", "equip: no EquipItemByName on this client"); return false end
-  if E.worn[inv] then E.seen[E.worn[inv]] = true end
-  E.bindOk = (G.GetTime and G.GetTime() or 0) + 3 -- the player said yes: the game's "binds to you" question is answered
+  if E.worn[inv] then E.setSeen(E.worn[inv], true) end
+  -- the player said yes: the game's "binds to you" question is answered. Only then: an automatic equip leaves the
+  -- game's question to the player (it used to bind items nobody said yes to)
+  E.bindOk = asked and ((G.GetTime and G.GetTime() or 0) + 3) or nil
   local ok, err = pcall(f, link, inv)
   if not ok then Core().log("warn", "equip failed: " .. tostring(err)); return false end
   return true
@@ -418,7 +447,7 @@ function E.nextAsk()
         Core().print("Auto-equip: in combat – equips " .. q.link .. " when the fight ends.")
         E.afterCombat = E.afterCombat or {}
         E.afterCombat[#E.afterCombat + 1] = q
-      elseif E.equip(q.bag, q.slot, q.link, q.inv) then
+      elseif E.equip(q.bag, q.slot, q.link, q.inv, true) then
         AU().did("equipped " .. q.link .. " (you said yes)")
       end
       E.nextAsk()
@@ -433,11 +462,16 @@ end
 function E.consider(bag, slot, link)
   local info = itemInfo(link)
   if not info then return "later" end -- not cached yet: the next bag update tries again
-  if not E.SLOTS[info.equipLoc or ""] then E.seen[link] = true; return "not gear" end
-  E.seen[link] = true
+  if not E.SLOTS[info.equipLoc or ""] then E.setSeen(link, true); return "not gear" end
+  E.setSeen(link, true)
   local it = { link = link, info = info, stats = itemStats(link), tip = E.readTip(E.tipLines(bag, slot)) }
   local d = E.decide(it, E.wornNow(), myRel())
-  if d.wait then E.waitLevel[link] = true end
+  -- only an item that is too high level is looked at again after a level-up (mail on a priest never fits)
+  local lvl = (G.UnitLevel and G.UnitLevel("player")) or 0
+  if d.wait and not (tonumber(info.minLevel) and tonumber(info.minLevel) <= lvl) then
+    E.waitLevel[link] = true
+    waitStore()[E.itemKey(link)] = true
+  end
   if d.act == "equip" then
     if E.equip(bag, slot, link, d.slot) then AU().did("equipped " .. link .. (d.old and (" (better than " .. d.old.link .. ")") or "")) end
   elseif d.act == "ask" then
@@ -463,7 +497,7 @@ function E.scan()
   for b = 0, 4 do
     for s = 1, bagSlots(b) do
       local l = bagLink(b, s)
-      if l and not E.seen[l] then E.consider(b, s, l) end
+      if l and not E.isSeen(l) then E.consider(b, s, l) end
     end
   end
 end
@@ -483,13 +517,15 @@ function E.onEvent(event, a)
   elseif event == "BAG_UPDATE_DELAYED" or event == "GET_ITEM_INFO_RECEIVED" then E.scan()
   elseif event == "PLAYER_EQUIPMENT_CHANGED" then E.noteWorn()
   elseif event == "PLAYER_LEVEL_UP" then
-    for l in pairs(E.waitLevel) do E.seen[l] = nil end
+    for l in pairs(E.waitLevel) do E.setSeen(l, nil) end
+    local wait = waitStore()
+    for k in pairs(wait) do seenStore()[k] = nil; wait[k] = nil end
     E.waitLevel = {}
     if G.C_Timer and G.C_Timer.After then G.C_Timer.After(1, E.scan) else E.scan() end
   elseif event == "PLAYER_REGEN_ENABLED" then
     local list = E.afterCombat or {}
     E.afterCombat = nil
-    for _, q in ipairs(list) do if E.equip(q.bag, q.slot, q.link, q.inv) then AU().did("equipped " .. q.link .. " (you said yes)") end end
+    for _, q in ipairs(list) do if E.equip(q.bag, q.slot, q.link, q.inv, true) then AU().did("equipped " .. q.link .. " (you said yes)") end end
     if E.pending then E.pending = false; E.scan() end
   elseif event == "EQUIP_BIND_CONFIRM" then
     -- the game asks "binds to you" after the player already said Equip in WoWBoxer's question: answer it once

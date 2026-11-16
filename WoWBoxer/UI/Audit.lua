@@ -149,6 +149,13 @@ end
 function AU.run()
   local f = UI.frame
   if not f or not f:IsShown() then return nil end
+  AU.running = true
+  local ok, res = pcall(AU.runPages, f)
+  AU.running = false
+  if not ok then error(res, 0) end
+  return res
+end
+function AU.runPages(f)
   local keep = UI.current
   local found = {}
   for _, tab in ipairs(UI.tabs) do
@@ -167,6 +174,9 @@ end
 
 --- Once per session, shortly after the window first opens.
 function AU.onFirstOpen()
+  -- only with debug on: the run selects every page, which marked every page's help hint as seen and caused a hitch
+  -- the first time the window opened (/wbx audit still runs it)
+  if not (ns.Core.db and ns.Core.db.settings.debug) then return end
   if AU.done then return end
   AU.done = true
   local function go() local ok, err = pcall(AU.run); if not ok then ns.Core.log("error", "audit: " .. tostring(err)) end end

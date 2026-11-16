@@ -22,7 +22,7 @@ local function sq(key) return UI.panels.squad.frames[key] end
 
 --- page key -> {title, tip = {lines}, callouts = fn() -> {{frame, text}}}
 Help.PAGES = {
-  keys = { tip = { "Drag a macro onto your action bar.", "Glow = new, orange dot = changed, dim = not on a bar.", "The banner shows the one thing to do now." },
+  keys = { tip = { "Drag a macro onto your action bar.", "New, Changed or Not on a bar shows under each macro.", "The banner shows the one thing to do now." },
     callouts = function() local p = UI.panels.keys
       local helper
       for _, b in ipairs(p.helperPool or {}) do if b:IsShown() then helper = helper or b end end
@@ -164,6 +164,7 @@ end
 function Help.onPage()
   local b = UI.helpBtn
   if not b then return end
+  if ns.Audit and ns.Audit.running then return end -- the layout audit flips through the pages: not a visit
   local key = Help.pageKey()
   local st = settings()
   st.helpSeen = type(st.helpSeen) == "table" and st.helpSeen or {}
@@ -231,6 +232,7 @@ end
 local function hit(a, b) return a[1] < b[3] and b[1] < a[3] and a[2] < b[4] and b[2] < a[4] end
 
 function Help.Show(key)
+  if InCombatLockdown() then return end -- the overlay takes key presses: never in a fight
   key = key or Help.pageKey()
   local list = Help.callouts(key)
   if #list == 0 then return end
@@ -454,5 +456,17 @@ function Help.checkOffer()
   ns.Sync.offer({ kind = "guide", from = "", text = "Playing together? Set up your squad." })
   return true
 end
+
+-- a fight starts: the help overlay and a waiting "press a key" capture both take key presses, so they close
+-- (left open they swallowed the player's keybinds in combat)
+local fight = CreateFrame("Frame")
+pcall(fight.RegisterEvent, fight, "PLAYER_REGEN_DISABLED")
+fight:SetScript("OnEvent", function()
+  if Help.overlay and Help.overlay:IsShown() then pcall(Help.Hide) end
+  for _, p in pairs(UI and UI.panels or {}) do
+    local c = type(p) == "table" and p.capture or nil
+    if c and c.IsShown and c:IsShown() and c.Stop then pcall(c.Stop, c) end
+  end
+end)
 
 return Help

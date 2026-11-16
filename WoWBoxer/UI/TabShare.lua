@@ -46,7 +46,7 @@ function tab.build(p)
   p.result:SetPoint("TOPLEFT", 0, -142)
   p.result:SetWidth(316)
   p.result:SetJustifyV("TOP")
-  if p.result.SetMaxLines then p.result:SetMaxLines(4) end
+  if p.result.SetMaxLines then p.result:SetMaxLines(7) end -- room for the "Replaces ..." line
   p.importBtn = W.button(p, "Import squad", 120, 22, function()
     if not p.pending then return end
     local m = ns.Core.applyImport(p.pending)

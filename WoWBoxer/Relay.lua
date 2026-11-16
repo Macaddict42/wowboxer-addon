@@ -18,7 +18,8 @@ ns.Relay = RL
 local G = _G
 RL.PREFIX = "WBXR"
 RL.MAX_TEXT = 200          -- characters of a forwarded whisper
-RL.SETTLE = 1.0            -- seconds after AUTOFOLLOW_END before the follower decides it is a break
+RL.SETTLE = 2.5            -- seconds after AUTOFOLLOW_END before the follower decides it is a break (1 s fired at
+                           -- every pull: casting the first spell breaks follow, and combat had not started yet)
 RL.ZONE_QUIET = 8          -- seconds after a loading screen without warnings
 RL.WARN_EVERY = 6          -- seconds between two warnings for the same follower
 RL.SELL_MAX = 100          -- items on the sell list
@@ -82,11 +83,21 @@ end
 RL.zonedAt = -1e9
 RL.warnedAt = {}
 local function quiet() return now() - RL.zonedAt < RL.ZONE_QUIET end
-local function selfBusy()
-  if C().safe(G.UnitAffectingCombat and G.UnitAffectingCombat("player")) then return "combat" end
+RL.lastCast, RL.lastDisplay = -1e9, -1e9
+local INTERACT = { "MerchantFrame", "GossipFrame", "QuestFrame", "TaxiFrame", "LootFrame", "ClassTrainerFrame" }
+--- Why a follow that just broke is no reason to warn (nil = warn), and whether that reason is worth a log line.
+--- self = the follower's own checks: casting, an NPC window, a window switch (clicking into the window).
+local function selfBusy(self)
+  if C().safe(G.UnitAffectingCombat and G.UnitAffectingCombat("player")) then return "combat", true end
   if G.UnitIsDeadOrGhost and C().safe(G.UnitIsDeadOrGhost("player")) then return "dead" end
   if G.UnitOnTaxi and C().safe(G.UnitOnTaxi("player")) then return "flight" end
   if quiet() then return "loading screen" end
+  if self then
+    if (G.UnitCastingInfo and C().safe(G.UnitCastingInfo("player"))) or (G.UnitChannelInfo and C().safe(G.UnitChannelInfo("player")))
+      or now() - RL.lastCast < 4 then return "casting", true end
+    if now() - RL.lastDisplay < 3 then return "window switch", true end
+    for _, n in ipairs(INTERACT) do local fr = G[n]; if fr and fr.IsShown and fr:IsShown() then return "talking to an NPC", true end end
+  end
   return nil
 end
 RL.selfBusy = selfBusy
@@ -97,8 +108,11 @@ function RL.onFollowEnd()
   local at = RL.endedAt
   local function check()
     if RL.endedAt ~= at or (ns.Team and ns.Team.following) then return end
-    local why = selfBusy()
-    if why then Core().log("info", "relay: follow ended (" .. why .. ") – no warning"); return end
+    local why, silent = selfBusy(true)
+    if why then
+      if not silent then Core().log("info", "relay: follow ended (" .. why .. ") – no warning") end
+      return
+    end
     send("F|1")
   end
   if G.C_Timer and G.C_Timer.After then G.C_Timer.After(RL.SETTLE, check) else check() end
@@ -107,8 +121,13 @@ end
 --- Leader: a follower reports a broken follow.
 function RL.followBroke(from)
   if not iAmLeader() or not AU().on("followWarn") then return false end
-  local why = selfBusy()
-  if why then Core().log("info", "relay: " .. from.name .. " stopped following (" .. why .. " here) – no warning"); return false end
+  local why, silent = selfBusy(false)
+  if why then
+    if not silent then Core().log("info", "relay: " .. from.name .. " stopped following (" .. why .. " here) – no warning") end
+    return false
+  end
+  local unit = C().partyUnitOf and C().partyUnitOf(from.name)
+  if unit and C().safe(G.UnitAffectingCombat and G.UnitAffectingCombat(unit)) then return false end -- the follower is fighting
   if now() - (RL.warnedAt[from.name] or -1e9) < RL.WARN_EVERY then return false end
   RL.warnedAt[from.name] = now()
   RL.warn(from.name .. " stopped following!")
@@ -384,7 +403,10 @@ function RL.Init()
   local regp = (CI and CI.RegisterAddonMessagePrefix) or G.RegisterAddonMessagePrefix
   if regp then pcall(regp, RL.PREFIX) end
   for _, ev in ipairs({ "CHAT_MSG_ADDON", "CHAT_MSG_WHISPER", "AUTOFOLLOW_END", "PLAYER_ENTERING_WORLD", "LOADING_SCREEN_DISABLED",
-    "GROUP_ROSTER_UPDATE", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE" }) do pcall(f.RegisterEvent, f, ev) end
+    "GROUP_ROSTER_UPDATE", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE", "DISPLAY_SIZE_CHANGED" }) do pcall(f.RegisterEvent, f, ev) end
+  for _, ev in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_SENT" }) do
+    pcall(f.RegisterUnitEvent, f, ev, "player")
+  end
   -- follower heartbeat: the whole quest log every QC_HEARTBEAT seconds while grouped (cheap: one short message)
   if G.C_Timer and G.C_Timer.NewTicker then
     pcall(G.C_Timer.NewTicker, RL.QC_HEARTBEAT, function()
@@ -396,7 +418,9 @@ RL.announcedAt = -1e9
 f:SetScript("OnEvent", function(_, event, a, b, c, d, e, g)
   if not Core().db then return end
   local ok, err = pcall(function()
-    if event == "CHAT_MSG_ADDON" then RL.receive(a, b, c, d)
+    if event == "DISPLAY_SIZE_CHANGED" then RL.lastDisplay = now()
+    elseif event:find("^UNIT_SPELLCAST") then RL.lastCast = now()
+    elseif event == "CHAT_MSG_ADDON" then RL.receive(a, b, c, d)
     elseif event == "CHAT_MSG_WHISPER" then RL.onWhisper(a, b, g)
     elseif event == "AUTOFOLLOW_END" then RL.onFollowEnd()
     elseif event == "PLAYER_ENTERING_WORLD" or event == "LOADING_SCREEN_DISABLED" then RL.zonedAt = now()

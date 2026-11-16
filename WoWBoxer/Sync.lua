@@ -242,11 +242,13 @@ function SY.sessionText()
   local text = "Squad |cffffd100" .. s.name .. "|r · " .. online .. "/" .. #rows .. " online · macros OK on " .. ok .. "/" .. #rows
   if #need > 0 then text = text .. " · " .. table.concat(need, ", ") .. (#need == 1 and " needs" or " need") .. " Update macros" end
   if #other > 0 then text = text .. " · |cfff0b43c" .. table.concat(other, ", ") .. " run another WoWBoxer version|r" end
-  return text
+  return text, (online == #rows and ok == #rows and #other == 0)
 end
 function SY.sessionCard()
-  local text = SY.sessionText()
+  local text, fine = SY.sessionText()
   if not text then return false end
+  -- everyone online, every macro OK, one version: nothing to do, so no card (it showed after every login)
+  if fine then Core().log("info", "squad check: " .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")); return false end
   SY.offer({ kind = "session", from = "", text = text })
   return true
 end
