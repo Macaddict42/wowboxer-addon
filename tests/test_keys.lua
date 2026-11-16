@@ -116,9 +116,9 @@ do
   UI.panels.custom.cells[1]:Click("LeftButton")
   H.ok(KE.IsOpen(), "editor open")
   local f = KE.frame
-  f.paste:Click()
+  CB.ShowPaste(KE.usePasted) -- the paste box (the editor has no Paste button now: Edit takes macro text)
   local box = CB.frame
-  H.ok(box:IsShown() and box.mode == "paste", "Paste… opens the paste box")
+  H.ok(box:IsShown() and box.mode == "paste", "the paste box opens")
   H.ok(not box.use:IsEnabled(), "nothing to use yet")
   box.e1:SetText(JAKOB); box.e1._scripts.OnTextChanged(box.e1, true)
   H.ok(box.result:GetText():find("Demon Skin", 1, true) and box.result:GetText():find("Shadow Bolt ×3", 1, true), "the box shows what it read")
@@ -142,7 +142,7 @@ do
   H.eq(table.concat(Layout.check(W, { box }), " | "), "", "copy box: no overlaps")
   box.close:Click()
   -- a pasted key from another class: unknown spells are left out and named
-  f.paste:Click()
+  CB.ShowPaste(KE.usePasted) -- the paste box (the editor has no Paste button now: Edit takes macro text)
   box.e1:SetText(ns.Share.encodeKey({ name = "Holy", kind = "sequence", aim = "harm", steps = { "Smite", "Immolate" }, filler = "", fills = 1, reset = "combat" }, "priest"))
   box.e1._scripts.OnTextChanged(box.e1, true)
   box.use:Click()

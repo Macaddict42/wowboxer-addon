@@ -224,11 +224,13 @@ function C.macroLimits()
   return G.MAX_ACCOUNT_MACROS or 120, G.MAX_CHARACTER_MACROS or 18
 end
 function C.numMacros() local a, c = GetNumMacros(); return a or 0, c or 0 end
---- name, icon, body for a macro index (nil when empty)
+--- name, icon, body, raw for a macro index (nil when empty). name is WoWBoxer's key for a WBX macro you gave your
+--- own name (raw is the name in the game).
 function C.macroInfo(index)
   local ok, name, icon, body = pcall(GetMacroInfo, index)
   if not ok then return nil end
-  return name, icon, body
+  local key = ns.Macros and ns.Macros.userKey and ns.Macros.userKey(name) -- a WBX macro you gave your own name
+  return key or name, icon, body, name
 end
 --- All character-specific macros: {{index, name, body}}
 function C.characterMacros()
@@ -236,8 +238,8 @@ function C.characterMacros()
   local _, numChar = C.numMacros()
   local out = {}
   for i = accMax + 1, accMax + numChar do
-    local name, icon, body = C.macroInfo(i)
-    if name then out[#out + 1] = { index = i, name = name, body = body or "", icon = icon } end
+    local name, icon, body, raw = C.macroInfo(i)
+    if name then out[#out + 1] = { index = i, name = name, body = body or "", icon = icon, raw = raw } end
   end
   return out
 end
@@ -245,8 +247,8 @@ function C.accountMacros()
   local numAcc = C.numMacros()
   local out = {}
   for i = 1, numAcc do
-    local name, icon, body = C.macroInfo(i)
-    if name then out[#out + 1] = { index = i, name = name, body = body or "", icon = icon } end
+    local name, icon, body, raw = C.macroInfo(i)
+    if name then out[#out + 1] = { index = i, name = name, body = body or "", icon = icon, raw = raw } end
   end
   return out
 end
@@ -265,7 +267,7 @@ function C.actionInfo(slot)
     if G.GetActionText then okT, t = pcall(G.GetActionText, slot) end
     t = okT and C.safe(t) or nil
     if type(t) == "string" and t ~= "" then
-      info.name = t
+      info.name = (ns.Macros and ns.Macros.userKey and ns.Macros.userKey(t)) or t
       local idx = G.GetMacroIndexByName and C.safe(G.GetMacroIndexByName(t))
       if type(idx) == "number" and idx > 0 then info.id = idx end
     elseif id and (sub == nil or sub == "" or sub == "macro") then info.name = C.macroInfo(id) end
@@ -613,7 +615,8 @@ function C.talentSpells()
 end
 
 -- Frames of the extra bars (same names in Classic Era and the modern UI). Bar 1 is always shown.
-local BAR_FRAME = { [61] = "MultiBarBottomLeft", [49] = "MultiBarBottomRight", [25] = "MultiBarRight", [37] = "MultiBarLeft" }
+local BAR_FRAME = { [61] = "MultiBarBottomLeft", [49] = "MultiBarBottomRight", [25] = "MultiBarRight", [37] = "MultiBarLeft",
+  [145] = "MultiBar5", [157] = "MultiBar6", [169] = "MultiBar7" }
 --- false when the bar starting at `first` exists but is hidden (not enabled in the interface options / Edit Mode).
 function C.barVisible(first)
   local name = BAR_FRAME[first]
@@ -996,6 +999,7 @@ C.dropped = {}
 C.DROP_LOG_EVERY = 30
 --- A WoWBoxer message that arrived but was not used: logged with the reason (once per sender+reason every 30 s).
 function C.drop(prefix, sender, reason)
+  sender = C.safe(sender) or "<secret>" -- a secret sender name can't be used as text or a key
   local key = tostring(prefix) .. ":" .. tostring(sender) .. ":" .. tostring(reason)
   local t = (G.GetTime and G.GetTime()) or 0
   if t - (C.dropped[key] or -1e9) < C.DROP_LOG_EVERY then return end

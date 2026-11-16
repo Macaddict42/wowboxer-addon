@@ -15,7 +15,7 @@ SV.GAMES = { forever = 16001, era = 11509 }
 SV.VOLATILE_DB = { log = true, diag = true, bridge = true }
 -- per character: the signature of the last level-up offer shown. It is made from the desired macros, so a deliberate
 -- macro change (1.1.1: the Wand squad macro) changes it and the player is offered the new macro, by design.
-SV.VOLATILE_CDB = { offerShown = true }
+SV.VOLATILE_CDB = { offerShown = true, unitNames = true } -- unitNames: squad names learned from the party (a cache)
 
 -- ------------------------------------------------------------------ serialise like the client (sorted, stable)
 local function key(k)

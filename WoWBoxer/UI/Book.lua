@@ -43,13 +43,15 @@ end
 Book.HELPER_NAME = { Follow = "Follow (line)", FollowLead = "Follow leader", Assist = "Assist", Focus = "Focus", PetBack = "Pet back", Wand = "Wand", Invite = "Invite squad",
   Invite2 = "Invite squad 2", Target = "Target leader" }
 function Book.shortLabel(it)
+  local own = it.name and ns.Macros.userName(it.name)
+  if own then return own end -- your name for it (Rename...)
   if it.group == "helper" then return Book.HELPER_NAME[it.key] or it.label end
   return it.label
 end
 --- Status words (tooltips only; the page shows colours).
 Book.STATUS = {
-  create = { "New macro", W.BLUE }, update = { "Changed", W.ORANGE }, noslot = { "No macro slot", W.RED },
-  invalid = { "Blocked", W.RED }, skipped = { "Left out", W.MUTED }, spell = { "The spell itself – no macro slot", W.GREEN },
+  create = { "Not made yet", W.BLUE }, update = { "Changed", W.ORANGE }, noslot = { "No macro slot", W.RED },
+  invalid = { "Blocked", W.RED }, skipped = { "Removed", W.MUTED }, spell = { "The spell itself – no macro slot", W.GREEN },
 }
 --- Which macro slot a key uses, in words (tooltip): a character slot, a general slot (its name there), or none.
 function Book.slotText(it)
@@ -156,7 +158,7 @@ function Book.playsAsValues()
   return v
 end
 function Book.setRole(mem, v)
-  if not mem then return end
+  if not mem or mem.role == v then return end -- picking the role you already have keeps your talent guide
   mem.role = v; mem.guide = ns.Kit.defaultGuideFor(mem.cls, v)
   Core().log("info", "role " .. v); Core().changed()
 end
@@ -265,6 +267,10 @@ function Book.spread(ctx)
     elseif it.group == "sequence" then table.insert(out.sections[2].cells, c)
     elseif it.group == "helper" then helperCell[it.key] = c end
   end
+  -- your own macros on the same page (there is no separate Macro editor page: New macro opens the editor)
+  local own = {}
+  for _, c in ipairs(Book.cells("custom", ctx)) do if c.kind ~= "new" then own[#own + 1] = c end end
+  if #own > 0 then out.sections[#out.sections + 1] = { title = "Your own macros", cells = own } end
   -- squad keys in a fixed order, each with its tick; unticked ones are shown off (nothing is created for them)
   for _, k in ipairs(Book.squadKeyList(ctx)) do
     local c = helperCell[k.key]
@@ -287,9 +293,19 @@ function Book.squadKeyList(ctx)
   return ns.Macros.squadKeyList(ctx.member, Core().cdb.squadKeys, ctx.squad)
 end
 --- Tick or untick a squad key for this character (WoWBoxer's own setting; the macro follows on Update keys).
+--- The tick acts at once (a click): ticked makes the macro (on its button if that is empty), unticked deletes it.
 function Book.setSquadKey(key, on)
   Core().cdb.squadKeys[key] = on and true or false
   Core().log("info", "squad macro " .. key .. (on and " on" or " off"))
+  local names = { "WBX " .. key }
+  if key == "Invite" then names[2] = "WBX Invite2" end
+  if on then
+    local set = {}
+    for _, n in ipairs(names) do set[n] = true; Core().cdb.skip[n] = nil end
+    Core().makeNow(set, "squad macro ticked")
+  else
+    Core().removeNow(names, "squad macro unticked")
+  end
   Core().changed()
 end
 
@@ -454,8 +470,10 @@ function Book.nextStep(ctx, mode)
   if C.inCombat() then return { text = "|cffff8a80In combat|r", tip = "WoWBoxer changes nothing until the fight is over." } end
   for _, first in ipairs({ cdb.primaryBar or 1, cdb.secondaryBar or 61 }) do
     if not C.barVisible(first) then
-      return { text = "|cfff0b43c" .. B.barLabel(first) .. " is hidden|r", tip = "Turn it on in " .. (C.game() == "forever" and "Edit Mode" or "Interface > Action Bars") ..
-        ", or choose another bar in Setup.", button = { "Choose bars", "Opens Setup, where you pick the bars WoWBoxer uses.", function() UI.Select("setup") end } }
+      local which = first == (cdb.primaryBar or 1) and "your spell macros" or "your other macros"
+      return { text = "|cfff0b43c" .. B.barLabel(first) .. " is turned off|r", tip = "Place spells puts " .. which .. " on " .. B.barLabel(first) ..
+        ", but that bar is off. Turn it on in " .. (C.game() == "forever" and "Edit Mode" or "Interface > Action Bars") ..
+        ", or pick another bar in Setup.", button = { "Pick bars", "Opens Setup: the bar for your spell macros and the bar for your other macros.", function() UI.Select("setup") end } }
     end
   end
   if (cdb.primaryBar or 1) == 1 and C.bonusBarOffset() > 0 then
@@ -636,6 +654,30 @@ local function pickupCell(c)
   elseif c.name then pickupResult(Core().pickup(c.name)) end
 end
 local function setSkip(name, skip) Core().cdb.skip[name] = skip or nil; Core().changed() end
+--- Remove (a click): one of WoWBoxer's own macros stops being made, an extra spell macro is forgotten, one of your
+--- own macros is deleted; the macro itself goes at once with its slot.
+local function removeCell(c)
+  local cdb, name = Core().cdb, c.name
+  if not name then return end
+  if ns.Compat.inCombat() then Core().print("Not in combat – try again after the fight."); return end
+  local own = tonumber(name:match("^WBX C(%d+)$"))
+  if own then
+    local _, m = Core().me()
+    if m then ns.KeyEditor.delete(m, own) end -- (moves the later own macros' settings along)
+    Core().changed()
+    return
+  end
+  local key = c.d and c.d.key
+  if type(key) == "string" and key:find("^X:") then
+    local id = c.d.spell and c.d.spell.id or key:sub(3)
+    for i = #cdb.extras, 1, -1 do if tostring(cdb.extras[i]) == tostring(id) then table.remove(cdb.extras, i) end end
+    cdb.skip[name], cdb.overrides[name] = nil, nil
+    if cdb.keyLines then cdb.keyLines[name] = nil end
+  else
+    cdb.skip[name] = true
+  end
+  Core().removeNow({ name }, "Remove")
+end
 local function directBound(c)
   for _, k in ipairs(c.keys or {}) do if k.via == "macro" then return true end end
   return false
@@ -655,8 +697,31 @@ function Book.menuFor(p, c)
   end
   items[#items + 1] = { "Pick up", function() pickupCell(c) end }
   items[#items + 1] = { "Set keybind…", function() p.capture:Start(c.name, c.label) end }
-  if c.item and c.item.status == "skipped" then items[#items + 1] = { "Use again", function() setSkip(c.name, false) end }
-  elseif c.item then items[#items + 1] = { "Leave out", function() setSkip(c.name, true) end } end
+  -- squad macros have their tick for this; a plain spell has no macro to remove
+  local squadKey = c.squadKey ~= nil or (c.item and c.item.group == "helper")
+  if c.item and not squadKey and c.item.status ~= "spell" then
+    if c.item.status == "skipped" then
+      items[#items + 1] = { "Use again", function()
+        setSkip(c.name, false)
+        Core().makeNow({ [c.name] = true }, "Use again")
+      end, "Makes this macro again now and puts it on its button if that button is empty." }
+      if ns.Macros.findIndex(c.name) then items[#items + 1] = { "Remove", function() removeCell(c) end, "Deletes the macro that is still there and frees its slot." } end
+    else
+      items[#items + 1] = { "Remove", function() removeCell(c) end, "Deletes this macro (also from your bars), frees its slot, and WoWBoxer stops making it." }
+    end
+  end
+  if c.name and c.item and c.item.status ~= "spell" and ns.Advanced and ns.Advanced.rename then
+    items[#items + 1] = { "Rename…", function() ns.Advanced.rename(c.name, c.label) end, "Your own name for this macro in the game; WoWBoxer keeps knowing it." }
+  end
+  if c.d and c.d.edited and c.name then
+    items[#items + 1] = { "Let WoWBoxer update it", function()
+      local cdb = Core().cdb
+      cdb.overwrite = type(cdb.overwrite) == "table" and cdb.overwrite or {}
+      cdb.overwrite[c.name] = true
+      if cdb.wrote then cdb.wrote[c.name] = nil end
+      Core().changed()
+    end, "Your edits to this macro are kept until you choose this; then Update macros writes WoWBoxer's version." }
+  end
   if c.item and c.item.status ~= "skipped" then
     if c.bar and c.bar.status == "off" then
       items[#items + 1] = { "Allow on my bars", function() Core().setKeptOff(c.name, false) end, "Place all puts this macro on your bars again, and WoWBoxer reminds you when it is not on a bar." }
@@ -897,7 +962,7 @@ local function makeCell(p, parent, small)
   return b
 end
 
---- The extra-line icons of a My macros card (only the lines this macro really has, at most three).
+--- The extra-line icons of a Macros card (only the lines this macro really has, at most three).
 Book.LINE_ICON = 13
 function Book.paintLines(p, b, c)
   if not b.lineBtns then return end
@@ -1142,6 +1207,11 @@ local function build(p, mode)
     p.placeLeft:SetPoint("BOTTOMLEFT", 32, 2)
     p.placeLeft.wbxBig = true
     W.primary(p.placeLeft)
+    p.newMacro = W.button(p.left, "New macro", 96, 22, function()
+      if ns.Compat.inCombat() then Core().print("Not in combat – try again after the fight."); return end
+      ns.Advanced.newMacro(p)
+    end, "Build your own macro: a single spell, a sequence or a priority macro, or your own text with Edit.")
+    p.newMacro:SetPoint("LEFT", p.placeLeft, "RIGHT", 8, 0)
     p.placeRight = W.button(p.right, "Place squad macros", 120, 20, function() Core().sync({ page = "squad" }) end,
       "Creates or updates your squad macros (Invite, Follow, Assist, pet macros …) and puts them on empty or WoWBoxer buttons. Macros you keep off your bars stay off.")
     p.placeRight.wbxBig = true -- the right page's one action (the owner's wording)
@@ -1196,7 +1266,8 @@ local function build(p, mode)
   p.next:SetScript("OnClick", function() p.page = p.page + 1; UI.Refresh() end)
   W.tip(p.next, "Next page")
   p.pageText = W.text(p.left, "GameFontNormalSmall", nil, W.GOLD, "CENTER")
-  p.pageText:SetPoint("BOTTOM", 0, 8)
+  p.pageText:SetPoint("RIGHT", p.next, "LEFT", -4, 0) -- next to the arrow: the middle of the row holds the buttons
+  if p.pageText.SetJustifyH then p.pageText:SetJustifyH("RIGHT") end
   p.pageText.wbxCopy = "status"
 
   p.capture = buildCapture(p)
@@ -1418,7 +1489,7 @@ function Book.buildGuide(p)
   for i = 1, 4 do
     local b = W.button(g, "Role", 100, 28, function(self)
       local _, mem = Core().me()
-      if mem and self.value then mem.role = self.value; mem.guide = ns.Kit.defaultGuideFor(mem.cls, self.value); Core().changed() end
+      if mem and self.value then Book.setRole(mem, self.value) end
     end, { "Role", ROLE_TIP })
     if i == 1 then b:SetPoint("TOPLEFT", 24, -150) else b:SetPoint("LEFT", g.roles[i - 1], "RIGHT", 8, 0) end
     g.roles[i] = b
@@ -1436,7 +1507,7 @@ function Book.buildGuide(p)
   end, { "Follower", function()
     local _, mem = Core().me()
     return "This character follows " .. leaderName(mem) .. ": its macros use the leader's target through " .. ((mem and not mem.leader and mem.unit) or "party1") ..
-      " (change the unit on the My macros page)." .. (ns.Kit.takesTarget(mem) and " Its damage macros take the leader's target first, because the wand keeps shooting and combo points build only on your own target." or "")
+      " (change the unit on the Macros page)." .. (ns.Kit.takesTarget(mem) and " Its damage macros take the leader's target first, because the wand keeps shooting and combo points build only on your own target." or "")
   end })
   g.follow:SetPoint("LEFT", g.lead, "RIGHT", 8, 0)
   g.seq = W.seqControl(g, { member = function() local _, mem = Core().me(); return mem end, width = 110 })
@@ -1553,10 +1624,11 @@ end
 
 -- ------------------------------------------------------------------ register the three book tabs
 for _, def in ipairs({
-  { key = "keys", label = "My macros", icon = "INV_Misc_Book_09", tip = "Your recommended macros for this level. Drag them onto your action bars." },
+  { key = "keys", label = "Macros", icon = "INV_Misc_Book_09", tip = "All your macros: WoWBoxer's for your level and your own. Drag them onto your action bars." },
+  -- your own macros: listed on the Macros page now (no row in the list; the panel stays for the editor's own use)
+  { key = "custom", label = "Macro editor", icon = "Spell_ChargePositive", hidden = true, tip = "Your own macros (up to 8) and New macro: build a single spell, sequence or priority macro." },
   { key = "spells", label = "All spells", icon = "INV_Misc_Book_11", tip = "Every spell you know, then the ones you learn later. Drag one onto a bar to make it a macro." },
-  { key = "custom", label = "Macro editor", icon = "Spell_ChargePositive", tip = "Your own macros (up to 8) and New macro: build a single spell, sequence or priority macro." },
 }) do
-  UI.RegisterTab({ key = def.key, label = def.label, icon = def.icon, tip = def.tip, book = true,
+  UI.RegisterTab({ key = def.key, label = def.label, icon = def.icon, tip = def.tip, book = true, hidden = def.hidden,
     build = function(p) build(p, def.key) end, refresh = refresh })
 end

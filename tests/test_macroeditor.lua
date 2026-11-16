@@ -113,8 +113,9 @@ do
     results[preset] = b
     H.ok(b and d.ok and #b <= 255, preset .. ": a valid macro ≤ 255 (" .. tostring(b and #b) .. ")")
   end
-  H.ok(results.enemy:find("[@mouseover,harm,nodead]", 1, true) and results.enemy:find("[@party1target,harm,nodead]", 1, true), "Enemy: mouseover > leader's target > my target: " .. results.enemy)
-  H.ok(results.friendly:find("[@mouseover,help,nodead]", 1, true) and results.friendly:find("[@party1,help,nodead]", 1, true), "Friendly: mouseover > leader > me")
+  H.ok(results.enemy:find("[@mouseover,harm,nodead]", 1, true) and results.enemy:find("/assist [noharm][dead] Dorin", 1, true) and not results.enemy:find("party1target", 1, true),
+    "Enemy: mouseover > my target, the leader's (by name) when I have no live enemy: " .. results.enemy)
+  H.ok(results.friendly:find("[@mouseover,help,nodead]", 1, true) and results.friendly:find("[@Dorin,help,nodead]", 1, true), "Friendly: mouseover > leader > me: " .. results.friendly)
   H.ok(results.self:find("/cast [@player,help", 1, true) and not results.self:find("mouseover", 1, true), "Myself: " .. results.self)
   H.ok(results["pet:Bo"]:find("[@party2pet,help,nodead]", 1, true), "a squad pet: Bo's pet = party2pet here")
   -- reopening shows Single spell and the preset again

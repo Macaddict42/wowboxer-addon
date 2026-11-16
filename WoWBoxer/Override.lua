@@ -16,7 +16,8 @@ local tconcat = table.concat
 local function S() return ns.State end
 
 O.MAX_TARGETS = 8
-O.KINDS = { "mouseover", "target", "leader", "leadertarget", "member", "mypet", "unit", "focus", "targettarget", "player" }
+-- membertarget = a squad member's target (assist them, by name)
+O.KINDS = { "mouseover", "target", "leader", "leadertarget", "member", "membertarget", "mypet", "unit", "focus", "targettarget", "player" }
 -- raw units: party1–4 and their pets (a party is you + party1–4: there is no party5), then raid1–40 and their pets.
 -- A macro with a raid unit still works in a party: [@raidN] simply does not exist there and the macro goes on.
 O.PARTY_UNITS = { "party1", "party2", "party3", "party4", "party1pet", "party2pet", "party3pet", "party4pet" }
@@ -35,10 +36,10 @@ local function cleanTarget(t)
   if type(t) ~= "table" or not contains(O.KINDS, t.who) then return nil end
   local x = { who = t.who, nodead = t.nodead ~= false }
   if t.help == true or t.help == false then x.help = t.help end -- true = friendly, false = enemy, nil = either
-  if t.who == "member" then
+  if t.who == "member" or t.who == "membertarget" then
     x.name = ns.Rules.cleanText(t.name, 24)
     if not x.name or x.name == "" then return nil end
-    x.pet = t.pet == true or nil
+    if t.who == "member" then x.pet = t.pet == true or nil end
   elseif t.who == "unit" then
     if not contains(O.RAW_UNITS, t.unit) then return nil end
     x.unit = t.unit
@@ -93,10 +94,13 @@ function O.unitFor(t, ctx)
     return u
   end
   if w == "leader" then return (me and me.leader) and "player" or memberUnit(L) end
-  if w == "leadertarget" then
-    if me and me.leader then return "target" end
-    local u = memberUnit(L)
-    return u and (u .. "target") or nil
+  -- someone's target: the macro takes it by name with its assist line (O.apply), then aims at your own target
+  -- (also while that member is not in your party: the /assist line goes by name, and the cast keeps its [harm] aim)
+  if w == "leadertarget" then return "target" end
+  if w == "membertarget" then
+    local m = ns.Compat.findByName(s and s.members or {}, t.name)
+    if not m or m == me then return nil end
+    return "target"
   end
   if w == "member" then
     local m = ns.Compat.findByName(s and s.members or {}, t.name) -- full or first name (Compat names)
@@ -117,6 +121,7 @@ function O.label(t, ctx)
   if w == "leader" then return (L and L.name or "The leader") .. " (leader)" end
   if w == "leadertarget" then return (L and L.name or "The leader") .. "'s target" end
   if w == "member" then return t.name .. (t.pet and "'s pet" or "") end
+  if w == "membertarget" then return t.name .. "'s target" end
   if w == "mypet" then return "My pet" end
   if w == "unit" then return t.unit end
   if w == "focus" then return "Focus" end
@@ -129,7 +134,8 @@ end
 function O.cond(t, ctx)
   local u = O.unitFor(t, ctx)
   if not u then return nil end
-  local parts = { "@" .. u }
+  local parts = {}
+  if u ~= "target" then parts[1] = "@" .. u end -- ([@target,harm] is just [harm]: shorter, the same)
   if t.help == true then parts[#parts + 1] = "help" elseif t.help == false then parts[#parts + 1] = "harm" end
   if t.nodead then parts[#parts + 1] = "nodead" end
   return "[" .. tconcat(parts, ",") .. "]", u
@@ -192,7 +198,8 @@ function O.apply(body, ov, ctx)
     if cmd == "/petattack" then hadPet = true; if ov.petattack == false then keep = false end end
     if keep and cmd and (hasTargets or ov.mod) and (TARGET_CMDS[cmd] or (ATTACK_CMDS[cmd] and help ~= true)) then
       local conds, rest = splitConds(arg)
-      if isTargeting(conds) then l = cmd .. " " .. chain .. (rest ~= "" and (" " .. rest) or "") end
+      -- the wand line ("/cast [...] !Shoot") keeps shooting at your own target: auto-repeat only goes on there
+      if isTargeting(conds) and not sfind(rest, "^!") then l = cmd .. " " .. chain .. (rest ~= "" and (" " .. rest) or "") end
     end
     if keep and cmd == "/castsequence" and ov.reset then
       l = l:gsub(" reset=%S+ ", " reset=" .. ov.reset .. " ", 1)
@@ -211,7 +218,50 @@ function O.apply(body, ov, ctx)
   local harmChain = (hasTargets and help ~= true and chain ~= "") and chain or "[harm,nodead]"
   if ov.petattack == true and not hadPet then addAfterTip("/petattack " .. harmChain) end
   if ov.startattack == true and not hadStart then addAfterTip("/startattack " .. harmChain) end
+  -- a member's (or the leader's) target in the list: take it by name, only when you have none worth keeping (a
+  -- target change resets castsequence reset=target)
+  local asTarget = O.assistOf(ov, ctx)
+  -- your own target list decides: the engine's "/assist <leader>" (and its /cleartarget) goes, so there is one
+  -- assist line, and none when the list has no one's target
+  if hasTargets then
+    local kept, dropNext = {}, false
+    for _, l in ipairs(out) do
+      local cmd = smatch(l, "^(/%S+)")
+      if cmd == "/assist" then dropNext = true
+      elseif dropNext and cmd == "/cleartarget" then dropNext = false
+      else dropNext = false; kept[#kept + 1] = l end
+    end
+    out = kept
+  end
+  if asTarget then
+    local t, name = asTarget.t, asTarget.name
+    local line
+    if t.help == false then line = "/assist [noharm][dead] " .. name .. "\n/cleartarget [help]"
+    elseif t.help == true then line = "/assist [nohelp][dead] " .. name .. "\n/cleartarget [harm]"
+    else line = "/assist [noexists][dead] " .. name end
+    addAfterTip(line)
+  end
+  -- the same condition twice in a row ("[harm,nodead][harm,nodead]") once
+  for i, l in ipairs(out) do
+    local prev
+    out[i] = sgsub(l, "%[[^%]]*%]", function(g) if g == prev then return "" end prev = g end)
+  end
   return tconcat(out, "\n"), missing
+end
+--- The first "<someone>'s target" in a targeting list: {t, name} with the name (or party unit) to /assist, or nil.
+function O.assistOf(ov, ctx)
+  local me, s = ctx and ctx.me, ctx and ctx.squad
+  for _, t in ipairs(ov and ov.targets or {}) do
+    local m
+    if t.who == "membertarget" then m = ns.Compat.findByName(s and s.members or {}, t.name)
+    elseif t.who == "leadertarget" and me and not me.leader then m = S().leaderOf(s) end
+    if m and m ~= me then
+      local known = ns.Core and ns.Core.cdb and ns.Core.cdb.unitNames
+      local name = (type(known) == "table" and known[m.name]) or ns.Squad.unitOf(m.name) or m.name
+      if not sfind(name, "[,%[%];]") then return { t = t, name = name } end
+    end
+  end
+  return nil
 end
 
 --- "mouseover > leader > Bo's pet > me" for the book's tooltip.
@@ -223,23 +273,36 @@ function O.summary(ov, ctx)
   return tconcat(parts, " > ")
 end
 
+--- true = friendly ("help"), false = enemy ("harm"), nil = either. (Not "x and false or nil": that is always nil.)
+function O.helpOf(conds)
+  if sfind(conds or "", "help", 1, true) then return true end
+  if sfind(conds or "", "harm", 1, true) then return false end
+  return nil
+end
+
 -- ------------------------------------------------------------------ text overrides: live checks
--- Only WoW's own macro conditionals (no addon or script syntax).
-local COND_WORDS = { help = 1, harm = 1, dead = 1, nodead = 1, exists = 1, noexists = 1, combat = 1, nocombat = 1, mod = 1, nomod = 1,
-  stealth = 1, nostealth = 1, channeling = 1, nochanneling = 1, pet = 1, nopet = 1, group = 1, nogroup = 1, flying = 1, noflying = 1,
-  mounted = 1, nomounted = 1, indoors = 1, outdoors = 1, swimming = 1, noswimming = 1, party = 1, raid = 1, actionbar = 1, bar = 1,
-  bonusbar = 1, button = 1, btn = 1, equipped = 1, worn = 1, form = 1, stance = 1, noform = 1, nostance = 1, known = 1, noknown = 1,
-  spec = 1, talent = 1, flyable = 1, noflyable = 1, resting = 1, noresting = 1, modifier = 1, nomodifier = 1, target = 1 }
+-- Only WoW's own macro conditionals (no addon or script syntax). Every one also works with "no" in front.
+local COND_WORDS = { help = 1, harm = 1, dead = 1, exists = 1, combat = 1, mod = 1, modifier = 1, stealth = 1, channeling = 1,
+  channel = 1, pet = 1, group = 1, flying = 1, mounted = 1, indoors = 1, outdoors = 1, swimming = 1, party = 1, raid = 1,
+  actionbar = 1, bar = 1, bonusbar = 1, button = 1, btn = 1, equipped = 1, worn = 1, form = 1, stance = 1, known = 1, spec = 1,
+  talent = 1, flyable = 1, advflyable = 1, resting = 1, target = 1, focus = 1, cursor = 1, extrabar = 1, overridebar = 1,
+  possessbar = 1, vehicleui = 1, unithasvehicleui = 1, canexitvehicle = 1, shapeshift = 1, petbattle = 1, pvptalent = 1 }
+local function condWord(w)
+  w = slower(w or "")
+  return COND_WORDS[w] or (w:sub(1, 2) == "no" and COND_WORDS[w:sub(3)]) or nil
+end
 --- Problems with the conditionals of a body: list of plain sentences (empty = fine).
 function O.checkConditionals(body)
   local out = {}
   for group in body:gmatch("%[([^%]]*)%]") do
     for part in (group .. ","):gmatch("%s*([^,]*),") do
+      part = part:gsub("%s+$", "")
       if part ~= "" then
         local word = smatch(part, "^@") and "@" or smatch(part, "^([%a]+)")
         if word == "@" then
-          if not smatch(part, "^@[%w]+$") then out[#out + 1] = "\"" .. part .. "\" is not a unit" end
-        elseif not (word and COND_WORDS[slower(word)]) then
+          -- a unit, or a squad member's name ("@Mira Vale": WoW Forever writes other realms with a space)
+          if not smatch(part, "^@[%w%- ]+$") then out[#out + 1] = "\"" .. part .. "\" is not a unit" end
+        elseif not (word and condWord(word)) then
           out[#out + 1] = "\"" .. part .. "\" is not a WoW macro condition"
         end
       end
@@ -294,10 +357,21 @@ function O.fromBody(body, ctx)
   if not first then return out end
   if first == "" then return { { who = "target", nodead = false } } end
   local leaderUnit = me and not me.leader and me.unit or nil
+  -- squad members by name ("@Dorin", "@Mira Vale": the form macros use, see Core.unitNames)
+  local byName, known = {}, ns.Core and ns.Core.cdb and ns.Core.cdb.unitNames
+  for _, mm in ipairs(ctx.squad and ctx.squad.members or {}) do
+    if mm ~= me then
+      byName[mm.name] = mm
+      if type(known) == "table" and known[mm.name] then byName[known[mm.name]] = mm end
+    end
+  end
   for g in first:gmatch("%[([^%]]*)%]") do
-    local unit = smatch(g, "@([%w]+)")
-    local t = { help = sfind(g, "help", 1, true) and true or (sfind(g, "harm", 1, true) and false or nil), nodead = sfind(g, "nodead", 1, true) ~= nil }
-    if not unit then t.who = "target"
+    local unit = smatch(g, "@([^,%]]+)")
+    local t = { help = O.helpOf(g), nodead = sfind(g, "nodead", 1, true) ~= nil }
+    local mm = unit and byName[unit]
+    if mm then
+      if mm.leader then t.who = "leader" else t.who, t.name = "member", mm.name end
+    elseif not unit then t.who = "target"
     elseif unit == "mouseover" or unit == "focus" or unit == "player" or unit == "targettarget" then t.who = unit
     elseif unit == "pet" then t.who = "mypet"
     elseif leaderUnit and unit == leaderUnit then t.who = "leader"
@@ -331,7 +405,7 @@ function O.groups(ctx, help)
     local u, label = O.unitFor(t, ctx), O.label(t, ctx)
     local text = label
     if not u then text = label .. " (not in party)"
-    elseif slower(u) ~= slower(label) and u ~= "" then
+    elseif slower(u) ~= slower(label) and u ~= "" and t.who ~= "membertarget" and t.who ~= "leadertarget" then
       text = label .. (sfind(label, "(", 1, true) and (" · " .. u) or (" (" .. u .. ")")) -- "Dorin (leader) · player"
     end
     return { text, t }
@@ -344,6 +418,7 @@ function O.groups(ctx, help)
   for _, m in ipairs(ctx.squad and ctx.squad.members or {}) do
     if m ~= ctx.me then
       squad[#squad + 1] = item({ who = "member", name = m.name })
+      squad[#squad + 1] = item({ who = "membertarget", name = m.name })
       if m.cls == "hunter" or m.cls == "warlock" then squad[#squad + 1] = item({ who = "member", name = m.name, pet = true }) end
     end
   end
@@ -352,7 +427,7 @@ function O.groups(ctx, help)
   for _, u in ipairs(O.RAID_UNITS) do raid[#raid + 1] = item({ who = "unit", unit = u }) end
   local out = {
     { key = "common", title = "Common", tip = "Who your macro aims at, wherever you play.", items = common },
-    { key = "squad", title = "Squad", tip = "Your squad members (and their pets) with their unit on this client.", items = squad },
+    { key = "squad", title = "Squad", tip = "Your squad members: a member (cast on them: buffs, heals) or a member's target (assist them).", items = squad },
     { key = "party", title = "Party", tip = "A party is you + party1–4 (there is no party5: you are \"player\").", items = party },
     { key = "raid", title = "Raid", tip = "raid1–40 and their pets, for squads of 6 or more. In a party a raid unit is simply skipped.", items = raid, folded = true },
   }

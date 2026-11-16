@@ -72,7 +72,7 @@ function M.inviteBodies(s, me)
 end
 --- The squad keys member m gets: {{key, label, body}} – K.helpers filtered by the ticks, plus Target and Invite.
 --- Follow (line) follows the member ahead (opts.lineUnit on this client, else m.lineUnit, else the leader's unit);
---- Follow leader is the old Follow. Both use party units, never names (docs/follow-line.md).
+--- Follow leader is the old Follow. M.desired names the member in both (docs/follow-line.md).
 function M.squadKeys(m, opts)
   local choices, s = opts.squadKeys, opts.squad
   local out = {}
@@ -82,7 +82,7 @@ function M.squadKeys(m, opts)
     end
   end
   local u = E.units(m.unit)
-  for _, h in ipairs(K.helpers(m)) do
+  for _, h in ipairs(K.helpers(m, opts.keyLines)) do
     if h.key == "Follow" then
       if M.squadKeyOn(m, "Follow", choices) then
         out[#out + 1] = { key = "Follow", label = "Follow the one ahead in the line", body = "/follow " .. (opts.lineUnit or m.lineUnit or u.main) }
@@ -317,14 +317,15 @@ function M.desired(m, L, opts)
   local byName = {}
   for _, s in ipairs(all) do byName[s.name] = s end
   for _, d in ipairs(out) do
-    -- the player's own targeting (Advanced mode) on a plain spell's key makes it a macro again
-    if d.plain and opts.overrides and opts.overrides[d.name] then d.plain = nil end
+    -- the player's own targeting (Advanced mode) or own name (Rename...) on a plain spell's key keeps it a macro
+    if d.plain and ((opts.overrides and opts.overrides[d.name]) or M.userName(d.name)) then d.plain = nil end
     if d.plain then d.body = "" end
     if map then d.body = M.localize(d.body, map) end
     d.icon = M.ICON
     -- a "?" macro of an unknown spell stays a "?" on the bar: give it the spell's own picture
     if d.pending and d.spell.icon then d.icon = M.namedIcon(d.spell.icon) end
     if d.seq then M.seqIcon(d, byName) end
+    if d.seq or d.steps then d.stepsFrom = function(body) return M.stepsFromBody(body, byName) end end
     if d.group == "helper" and M.HELPER_ICON[d.key] then d.iconName = M.HELPER_ICON[d.key]; d.icon = M.namedIcon(d.iconName) end
     if d.plain then
       -- the spell itself on the bar: its own icon, nothing to validate (no macro is written)
@@ -339,11 +340,31 @@ function M.desired(m, L, opts)
   if opts.overrides and ns.Override then
     ns.Override.applyAll(out, opts.overrides, opts.ovCtx or {})
     for _, d in ipairs(out) do
+      if d.frozen then M.realSteps(d) end -- your own text: its steps, not WoWBoxer's
       if d.override then
         d.ok, d.why = R.validateMacro(d.name, d.body)
         if not d.ok and #d.body > R.MACRO_LIMIT then d.why = "Too long with your targeting (" .. #d.body .. "/255): remove a target or untick Skip if dead" end
       end
     end
+  end
+  -- squad members by name (your own text is left as you wrote it); WoWBoxer's version keeps the party units, which
+  -- the Macro editor reads
+  if opts.unitNames and next(opts.unitNames) then
+    for _, d in ipairs(out) do
+      if not d.plain and not d.frozen and type(d.body) == "string" and d.body:find("party%d") then
+        local nb = M.nameUnits(d.body, opts.unitNames)
+        if nb ~= d.body and #nb <= R.MACRO_LIMIT and R.validateMacro(d.name, nb) then
+          d.engineBody = d.engineBody or d.body
+          d.body = nb
+          d.ok, d.why = true, nil
+        end
+      end
+    end
+  end
+  -- a macro you renamed shows your name in the book (d.wbxLabel keeps WoWBoxer's label)
+  for _, d in ipairs(out) do
+    local un = M.userName(d.name)
+    if un then d.wbxLabel = d.wbxLabel or d.label; d.label = un end
   end
   return out
 end
@@ -420,14 +441,110 @@ function M.isMineAccount(name, tag)
   local head = R.PREFIX .. tag .. " "
   return name:sub(1, #head) == head
 end
---- Key name -> the macro's name in the game (the general-slot name when the last plan put it there), and back.
+--- Your own names for WoWBoxer macros (Rename..., the name of a new macro): cdb.macroNames = {["WBX K1"] = "Bolt"}.
+--- Inside WoWBoxer a key keeps its WBX name; only the macro in the game is called what you chose.
+function M.userName(key)
+  local t = ns.Core and ns.Core.cdb and ns.Core.cdb.macroNames
+  return type(t) == "table" and t[key] or nil
+end
+function M.userKey(gameName)
+  local t = ns.Core and ns.Core.cdb and ns.Core.cdb.macroNames
+  if type(t) ~= "table" or type(gameName) ~= "string" then return nil end
+  for k, v in pairs(t) do if v == gameName then return k end end
+  return nil
+end
+--- Key name -> the macro's name in the game (your name, else the general-slot name when the last plan put it there),
+--- and back.
 M.gameNames, M.keyNames = {}, {}
-function M.gameName(name) return M.gameNames[name] or name end
-function M.keyName(gameName) return M.keyNames[gameName] or gameName end
+function M.gameName(name) return M.userName(name) or M.gameNames[name] or name end
+function M.keyName(gameName) return M.userKey(gameName) or M.keyNames[gameName] or gameName end
 --- True when the game macro called `gameName` is WoWBoxer key `name` (its own name, or its general-slot name).
 function M.isMacro(gameName, name)
   if gameName == nil or name == nil then return false end
   return gameName == name or (M.tag ~= nil and gameName == M.accountName(name)) or false
+end
+
+--- Squad members by name instead of their party slot (party1-4 change when other players join or leave). map =
+--- {party1 = "Mira Vale", ...}: /follow, /assist, /target lines and [@party1,...] conditions get the name. A
+--- player's target has no name form ([@party1target] stays; the assist line takes the target by name instead).
+function M.nameUnits(body, map)
+  if type(body) ~= "string" or not map or not next(map) then return body end
+  local out = {}
+  for line in (body .. "\n"):gmatch("([^\n]*)\n") do
+    local cmd, conds, unit = line:match("^(/%a+) (%[.-%] )(party%d)$")
+    if not cmd then cmd, unit = line:match("^(/%a+) (party%d)$"); conds = "" end
+    if cmd and map[unit] then line = cmd .. " " .. conds .. map[unit] end
+    line = line:gsub("@(party%d)([,%]])", function(u, sep) if map[u] then return "@" .. map[u] .. sep end end)
+    out[#out + 1] = line
+  end
+  if out[#out] == "" then out[#out] = nil end
+  return table.concat(out, "\n")
+end
+
+--- The spells a macro text really casts, in order (a /castsequence's list, else every /cast line), as spell objects
+--- from byName ({[name] = spell}); nil when none is known. For the book's steps and tooltip of a macro you wrote or
+--- edited yourself.
+function M.stepsFromBody(body, byName)
+  if type(body) ~= "string" or type(byName) ~= "table" then return nil end
+  local function strip(arg)
+    while arg:sub(1, 1) == "[" do
+      local j = arg:find("]", 1, true)
+      if not j then break end
+      arg = arg:sub(j + 1):gsub("^%s+", "")
+    end
+    return arg
+  end
+  local seq, casts = nil, {}
+  for line in (M.norm(body) .. "\n"):gmatch("([^\n]*)\n") do
+    local cmd, arg = line:match("^(/%S+)%s*(.*)$")
+    if cmd == "/castsequence" and not seq then
+      arg = strip(arg):gsub("^reset=%S+%s*", "")
+      seq = {}
+      for n in (arg .. ","):gmatch("([^,]*),") do
+        n = n:match("^%s*!?(.-)%s*$")
+        if byName[n] then seq[#seq + 1] = byName[n] end
+      end
+    elseif cmd == "/cast" then
+      local n = strip(arg):match("^!?(.-)%s*$")
+      if byName[n] then casts[#casts + 1] = byName[n] end
+    end
+  end
+  local steps = (seq and #seq > 0) and seq or casts
+  return #steps > 0 and steps or nil
+end
+function M.realSteps(d)
+  local st = d.stepsFrom and d.stepsFrom(d.body)
+  if st then d.steps, d.main = st, st[#st] end
+end
+
+--- A macro text as WoW keeps it: no carriage returns, no spaces at line ends, nothing after the last line.
+function M.norm(s)
+  s = tostring(s or ""):gsub("\r", "")
+  s = s:gsub("[ \t]+\n", "\n"):gsub("%s+$", "")
+  return s
+end
+local function commands(body)
+  local t = {}
+  for line in (M.norm(body) .. "\n"):gmatch("([^\n]*)\n") do
+    local c = line:match("^(/%S+)")
+    if c then
+      c = c:lower()
+      if c == "/assist" or c == "/targetlasttarget" then c = "/target" end -- (WoWBoxer swaps these itself)
+      t[c] = true
+    end
+  end
+  return t
+end
+--- Did the player edit this WBX macro in the game? It differs from what WoWBoxer last wrote, or (nothing recorded
+--- yet) it has a line WoWBoxer would never write there (/stopcasting, /targetenemy, a /castsequence of its own ...).
+function M.looksEdited(name, cur, want)
+  local cdb = ns.Core and ns.Core.cdb
+  local wrote = cdb and cdb.wrote
+  if type(wrote) == "table" and wrote[name] then return M.norm(cur) ~= wrote[name] end
+  if not R.validateMacro(name, M.norm(cur)) then return true end
+  local have, need = commands(cur), commands(want)
+  for c in pairs(have) do if not need[c] then return true end end
+  return false
 end
 
 --- Diff desired against existing macros. skip = {[name]=true} to leave out. tag (optional, default M.tag): this
@@ -438,34 +555,52 @@ function M.plan(desired, skip, tag)
   skip = skip or {}
   tag = tag or M.tag
   local existing, accList = C.characterMacros(), C.accountMacros()
-  local byName, accBy = {}, {}
+  local byName, accBy, accOwn = {}, {}, {}
   for _, x in ipairs(existing) do if R.isOurs(x.name) and not byName[x.name] then byName[x.name] = x end end
-  for _, x in ipairs(accList) do if M.isMineAccount(x.name, tag) and not accBy[x.name] then accBy[x.name] = x end end
+  for _, x in ipairs(accList) do
+    if M.isMineAccount(x.name, tag) and not accBy[x.name] then accBy[x.name] = x
+    -- a general-slot macro you renamed: it reads as its key (Compat.macroInfo), its game name is yours
+    elseif x.raw and x.raw ~= x.name and R.isOurs(x.name) and not accOwn[x.name] then accOwn[x.name] = x end
+  end
   local accMax, charMax = C.macroLimits()
   local free, accFree = charMax - #existing, accMax - #accList
   local items, wanted = {}, {}
   local counts = { create = 0, update = 0, same = 0, noslot = 0, invalid = 0, skipped = 0, spell = 0, account = 0 }
   M.gameNames, M.keyNames = {}, {}
   for _, d in ipairs(desired) do
-    local it = { name = d.name, key = d.key, label = d.label, body = d.body, icon = d.icon, group = d.group, seq = d.seq ~= nil, gameName = d.name }
+    local it = { name = d.name, key = d.key, label = d.label, body = d.body, icon = d.icon, group = d.group, seq = d.seq ~= nil, gameName = M.userName(d.name) or d.name }
     local an = tag and M.accountName(d.name, tag) or nil
     local cur, inAcc = byName[d.name], false
     if not cur and an and accBy[an] then cur, inAcc = accBy[an], true end
+    if not cur and accOwn[d.name] then cur, inAcc = accOwn[d.name], true end
+    local cdb = ns.Core and ns.Core.cdb
+    local overwrite = cdb and type(cdb.overwrite) == "table" and cdb.overwrite or {}
     if d.plain then
       it.status, it.plain = "spell", true -- no macro: an old WBX macro of this name is offered for removal (unused)
     else
-      wanted[d.name] = true
-      if an then wanted[an] = true end
+      -- a removed ("skipped") macro is not wanted any more: its slot shows up under "Remove unused"
+      if not skip[d.name] then
+        wanted[d.name] = true
+        if an then wanted[an] = true end
+      end
+      local same = cur and M.norm(cur.body) == M.norm(d.body)
       if skip[d.name] then it.status = "skipped"
       elseif not d.ok then it.status = "invalid"; it.why = d.why
-      elseif cur and cur.body == d.body and not M.iconChanged(cur.icon, d.icon) then it.status = "same"; it.index = cur.index
+      -- the same text (line ends, a trailing newline) is the same macro
+      elseif same and not M.iconChanged(cur.icon, d.icon) then it.status = "same"; it.index = cur.index
+      elseif cur and not same and not d.override and not overwrite[d.name] and M.looksEdited(d.name, cur.body, d.body) then
+        -- the player's own edit: kept (right-click > Let WoWBoxer update it); the book shows what it really does
+        it.status, it.index, it.old, it.edited = "same", cur.index, cur.body, true
+        d.edited, d.body = true, M.norm(cur.body)
+        M.realSteps(d)
       elseif cur then it.status = "update"; it.index = cur.index; it.old = cur.body
       elseif free > 0 then it.status = "create"; free = free - 1
       elseif an and accFree > 0 then it.status = "create"; inAcc = true; accFree = accFree - 1
       else it.status = "noslot" end
       if inAcc then
-        it.account, it.gameName = true, an
-        M.gameNames[d.name], M.keyNames[an] = an, d.name
+        -- in a general slot: your name for it if you gave one, else WoWBoxer's general-slot name
+        it.account, it.gameName = true, M.userName(d.name) or an
+        if an then M.gameNames[d.name], M.keyNames[an] = an, d.name end
         counts.account = counts.account + 1
       end
     end
@@ -491,6 +626,8 @@ function M.findIndex(name)
   if not R.isOurs(name) then return nil end
   local an = M.isMineAccount(name) and name or M.accountName(name)
   if an then for _, x in ipairs(C.accountMacros()) do if x.name == an then return x.index end end end
+  -- a general-slot macro you renamed (it reads as its key)
+  if M.userName(name) then for _, x in ipairs(C.accountMacros()) do if x.name == name and x.raw ~= name then return x.index end end end
   return nil
 end
 
@@ -498,6 +635,13 @@ end
 function M.apply(plan)
   local res = { created = 0, updated = 0, failed = {}, changed = {} }
   if C.inCombat() then res.failed[1] = { name = "*", err = "in combat" }; return res end
+  local cdb = ns.Core and ns.Core.cdb
+  if cdb then cdb.wrote = type(cdb.wrote) == "table" and cdb.wrote or {} end
+  local function wroteIt(it)
+    if not cdb then return end
+    cdb.wrote[it.name] = M.norm(it.body) -- what WoWBoxer wrote: a later difference is the player's own edit
+    if type(cdb.overwrite) == "table" then cdb.overwrite[it.name] = nil end
+  end
   for _, it in ipairs(plan.items) do
     if it.status == "create" or it.status == "update" then
       local ok, why = R.validateMacro(it.name, it.body)
@@ -508,7 +652,7 @@ function M.apply(plan)
         if M.findIndex(it.name) then -- created meanwhile: edit instead
           local idx = M.findIndex(it.name)
           local okc, err = pcall(EditMacro, idx, M.nameAt(idx, gname), it.icon, it.body)
-          if okc then res.updated = res.updated + 1; res.changed[#res.changed + 1] = it.name else res.failed[#res.failed + 1] = { name = it.name, err = tostring(err) } end
+          if okc then res.updated = res.updated + 1; res.changed[#res.changed + 1] = it.name; wroteIt(it) else res.failed[#res.failed + 1] = { name = it.name, err = tostring(err) } end
         else
           -- perCharacter: true = a character slot; nil = a general slot (named for this character, M.accountName)
           local okc, err = pcall(CreateMacro, gname, it.icon, it.body, (not it.account) or nil)
@@ -516,14 +660,14 @@ function M.apply(plan)
             if Core() and Core().macroTag then Core().macroTag(true) end -- from now on this tag is this character's
             Core().log("info", "macro " .. it.name .. " created in a general slot as " .. gname)
           end
-          if okc and err then res.created = res.created + 1; res.changed[#res.changed + 1] = it.name else res.failed[#res.failed + 1] = { name = it.name, err = tostring(err or "no free macro slot") } end
+          if okc and err then res.created = res.created + 1; res.changed[#res.changed + 1] = it.name; wroteIt(it) else res.failed[#res.failed + 1] = { name = it.name, err = tostring(err or "no free macro slot") } end
         end
       else
         local idx = M.findIndex(it.name)
         if not idx then res.failed[#res.failed + 1] = { name = it.name, err = "macro disappeared" }
         else
           local okc, err = pcall(EditMacro, idx, M.nameAt(idx, it.gameName or it.name), it.icon, it.body)
-          if okc then res.updated = res.updated + 1; res.changed[#res.changed + 1] = it.name else res.failed[#res.failed + 1] = { name = it.name, err = tostring(err) } end
+          if okc then res.updated = res.updated + 1; res.changed[#res.changed + 1] = it.name; wroteIt(it) else res.failed[#res.failed + 1] = { name = it.name, err = tostring(err) } end
         end
       end
     end
@@ -532,7 +676,8 @@ function M.apply(plan)
 end
 --- The name to keep when editing macro #idx: the name it has now (a general macro keeps its per-character name).
 function M.nameAt(idx, fallback)
-  local n = C.macroInfo(idx)
+  local n = C.macroInfo(idx) -- (your own name comes back as its WBX key: write the name you chose)
+  if type(n) == "string" and M.userName(n) then return M.userName(n) end
   return (type(n) == "string" and R.isOurs(n)) and n or fallback
 end
 

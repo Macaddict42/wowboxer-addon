@@ -122,14 +122,14 @@ do
   local menu = ns.Book.menuFor(UI.panels.keys, { kind = "key", name = "WBX K3", label = "x" })
   H.eq(#menu, 1, "the right-click menu offers nothing in combat")
   W.combat = false
-  -- right-click menu: Pick up, Bind key, Leave out / Use again
+  -- right-click menu: Pick up, Bind key, Remove / Use again, Rename
   local cell = row(ns, function(x) return x.name == "WBX K3" end)
   cell:Click("RightButton")
   local m = ns.Widgets.menuFrame
   H.ok(m and m:IsShown(), "right-click opens the menu")
   local labels = {}
   for _, b in ipairs(m.rows) do if b:IsShown() then labels[#labels + 1] = b.label._text end end
-  H.eq(table.concat(labels, ", "), "Pick up, Set keybind…, Leave out, Edit macro… (Advanced mode), Copy…", "menu entries (Edit macro greyed in Standard)")
+  H.eq(table.concat(labels, ", "), "Pick up, Set keybind…, Remove, Rename…, Edit macro… (Advanced mode), Copy…", "menu entries (Edit macro greyed in Standard)")
   m.rows[3]:Click()
   H.ok(Core.cdb.skip["WBX K3"], "Leave out from the menu")
   H.ok(row(ns, function(x) return x.name == "WBX K3" end).cell.st.off, "shown as left out (greyed)")
@@ -339,8 +339,8 @@ do
   W.env.MultiBarBottomLeft:Hide()
   UI.Open("keys")
   local step = function() return UI.panels.keys.stepText._text or "" end
-  H.ok(step():find("hidden") ~= nil, "hidden bar explained: " .. step())
-  H.ok(findButton(W, "Choose bars") ~= nil, "with a button that leads to the fix")
+  H.ok(step():find("Bottom Left Bar is turned off", 1, true) ~= nil, "hidden bar explained: " .. step())
+  H.ok(findButton(W, "Pick bars") ~= nil, "with a button that leads to the fix")
   W.env.MultiBarBottomLeft:Show()
   Core.cdb.primaryBar = 1
   W.env.GetBonusBarOffset = function() return 1 end
@@ -359,8 +359,8 @@ do
   H.ok(s.members[1].leader and s.members[1].name == "Leader", "placeholder leads")
   local ctx = Core.compute()
   local uses = false
-  for _, d in ipairs(ctx.desired) do if d.body:find("party2target", 1, true) then uses = true end end
-  H.ok(uses, "keys now assist party2's target")
+  for _, d in ipairs(ctx.desired) do if d.body:find("/assist [noharm][dead] party2", 1, true) then uses = true end end
+  H.ok(uses, "keys now take party2's target (no name known for the placeholder leader)")
   Core.setPlaysAs("leader")
   H.ok(select(2, Core.me()).leader, "back to leader")
   H.eq(#s.members, 2, "no second placeholder")
@@ -650,6 +650,7 @@ end
 -- ------------------------------------------------------------------ layout audit (read-only measurements)
 do
   local W, ns = boot({ name = "Warlocker", class = "PRIEST", race = "Scourge", level = 20 })
+  ns.Core.db.settings.debug = true -- the audit runs on its own only with debug on
   ns.UI.Toggle()
   local keep = ns.UI.current
   -- a one-line label that is far too long for its width

@@ -189,17 +189,17 @@ do
   local function key(name) for _, d in ipairs(Core.compute().desired) do if d.name == name then return d end end end
   H.ok(not me.leader, "Wowtwo follows")
   H.eq(key("WBX Invite"), nil, "a follower: Invite off by default")
-  H.eq(key("WBX Follow").body, "/follow party2", "Follow on the party unit")
-  H.eq(key("WBX Assist").body, "/assist party2", "Assist on the party unit")
+  H.eq(key("WBX Follow").body, "/follow Dorin", "Follow names the leader (party2 here)")
+  H.eq(key("WBX Assist").body, "/assist Dorin", "Assist names the leader")
   H.eq(key("WBX Target"), nil, "Target leader off by default")
   ns.Book.setSquadKey("Target", true)
-  H.eq(key("WBX Target").body, "/target party2", "ticked: Target leader on the party unit")
+  H.eq(key("WBX Target").body, "/target Dorin", "ticked: Target leader names the leader")
   ns.Book.setSquadKey("Follow", false)
   H.eq(key("WBX Follow"), nil, "Follow unticked: not created")
   ns.Book.setSquadKey("Invite", true)
   H.eq(key("WBX Invite").body, "/invite Kirra\n/invite Dorin", "any character can tick Invite squad")
   for _, d in ipairs(Core.compute().desired) do
-    if d.body:find("Dorin", 1, true) then H.eq(d.key, "Invite", "only Invite uses names (" .. d.name .. ")") end
+    H.ok(not d.body:find("party%d"), "names, never party slots (" .. d.name .. ")")
   end
   local list = ns.Macros.squadKeyList(me, Core.cdb.squadKeys, Core.me())
   local names = {}

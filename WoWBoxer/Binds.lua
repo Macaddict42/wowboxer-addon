@@ -9,7 +9,8 @@ ns.Binds = KB
 local G = _G
 -- first action slot of a bar -> binding command prefix of its buttons
 local BAR_CMD = { [1] = "ACTIONBUTTON", [61] = "MULTIACTIONBAR1BUTTON", [49] = "MULTIACTIONBAR2BUTTON",
-  [25] = "MULTIACTIONBAR3BUTTON", [37] = "MULTIACTIONBAR4BUTTON" }
+  [25] = "MULTIACTIONBAR3BUTTON", [37] = "MULTIACTIONBAR4BUTTON", [145] = "MULTIACTIONBAR5BUTTON", [157] = "MULTIACTIONBAR6BUTTON",
+  [169] = "MULTIACTIONBAR7BUTTON" }
 KB.MODIFIERS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true, LMETA = true, RMETA = true }
 KB.CHARACTER_SET = 2 -- CHARACTER_BINDINGS
 
@@ -64,7 +65,10 @@ function KB.actionOf(key)
   if not key or not G.GetBindingAction then return nil end
   local a = G.GetBindingAction(key)
   if a == nil or a == "" then return nil end
-  return a
+  -- a WBX macro you renamed: "MACRO <your name>" reads as its key, like everywhere else in WoWBoxer
+  local n = a:match("^MACRO (.+)$")
+  local k = n and ns.Macros and ns.Macros.userKey and ns.Macros.userKey(n)
+  return k and ("MACRO " .. k) or a
 end
 
 --- The action slot an action-button binding command presses (ACTIONBUTTON4 -> 4, MULTIACTIONBAR1BUTTON2 -> 62), or nil.
@@ -197,7 +201,7 @@ function KB.directWbx()
   local names = {}
   for _, x in ipairs(ns.Compat.characterMacros()) do if ns.Rules.isOurs(x.name) then names[#names + 1] = x.name end end
   for _, n in ipairs(names) do
-    for _, k in ipairs(keysOf("MACRO " .. n)) do if not seen[k] then seen[k] = true; out[#out + 1] = { key = k, macro = n, prev = prevStore()[k] } end end
+    for _, k in ipairs(keysOf("MACRO " .. real(n))) do if not seen[k] then seen[k] = true; out[#out + 1] = { key = k, macro = n, prev = prevStore()[k] } end end
   end
   for k in pairs(KB.DEFAULT_KEYS) do
     local a = KB.actionOf(k)

@@ -33,9 +33,16 @@ end
 Core.print = chat
 
 --- Debug log in SavedVariables (WoWBoxerDB.log), readable after /reload or logout.
+Core.logSeen, Core.logSeenN = {}, 0
 function Core.log(level, msg)
   local db = Core.db
   if not db then return end
+  -- the same line again within 5 s (a doubled event, a burst of identical messages) is not written twice
+  local k, now = tostring(level) .. "|" .. tostring(msg), (GetTime and GetTime()) or 0
+  if now - (Core.logSeen[k] or -1e9) < 5 then return end
+  if Core.logSeenN > 300 then Core.logSeen, Core.logSeenN = {}, 0 end
+  if not Core.logSeen[k] then Core.logSeenN = Core.logSeenN + 1 end
+  Core.logSeen[k] = now
   local entry = { t = time and time() or 0, c = Core.charKey or "?", l = level, m = tostring(msg) }
   local log = db.log
   log[#log + 1] = entry
@@ -133,6 +140,34 @@ function Core.compute()
   end
   return Core.computeFresh()
 end
+--- Squad members' names for macros, by the party slot they have now: {party1 = "Mira Vale"}. Forever names have
+--- two parts (tested in game: /cast [@Mira Vale,help] works, "Mira-Vale" does not). A name
+--- is remembered per member, so macros keep it while you're not grouped (nothing flips back to party1).
+function Core.unitNames(s)
+  local map = {}
+  local known = type(Core.cdb.unitNames) == "table" and Core.cdb.unitNames or {}
+  for _, mm in ipairs(s and s.members or {}) do
+    local u = ns.Squad and ns.Squad.unitOf and ns.Squad.unitOf(mm.name)
+    if u and u:match("^party%d$") then
+      local n, r = UnitName(u)
+      n, r = C.safe(n), C.safe(r)
+      if type(n) == "string" and n ~= "" and not n:find("[,%[%];]") then
+        -- Forever names are two parts ("Mira Vale"); the game may give the second part separately
+        local form = (not n:find(" ", 1, true) and type(r) == "string" and r ~= "" and not r:find("[,%[%];]")) and (n .. " " .. r) or n
+        map[u], known[mm.name] = form, form
+        Core.cdb.unitNames = known -- saved only once there is a name to keep
+      end
+    end
+  end
+  -- not grouped: the leader's slot (where WoWBoxer's macros point) keeps the leader's last name
+  local _, me = Core.me()
+  local L = S.leaderOf(s)
+  if me and L and L ~= me and me.unit and not map[me.unit] and known[L.name] then map[me.unit] = known[L.name] end
+  -- and Follow (line)'s saved slot keeps the name of the member ahead
+  local ahead = me and S.aheadOf and S.aheadOf(s, me)
+  if ahead and me.lineUnit and not map[me.lineUnit] and known[ahead.name] then map[me.lineUnit] = known[ahead.name] end
+  return map
+end
 --- Desired macros + plans for this character. Returns ctx table or nil, reason.
 function Core.computeFresh()
   local s, m = Core.me()
@@ -142,7 +177,7 @@ function Core.computeFresh()
   Core.liveLeaderUnit(s, m)
   local lineUnit = ns.Squad and ns.Squad.lineFor(s, m) or nil
   local desired = M.desired(m, L, { live = live, extras = Core.cdb.extras, squad = s, squadKeys = Core.cdb.squadKeys, lineUnit = lineUnit,
-    overrides = Core.cdb.overrides, ovCtx = { squad = s, me = m }, keyLines = Core.cdb.keyLines })
+    overrides = Core.cdb.overrides, ovCtx = { squad = s, me = m }, keyLines = Core.cdb.keyLines, unitNames = Core.unitNames(s) })
   for _, d in ipairs(desired) do d.keepOff = Core.keptOff(d.name, d.group) end
   M.setTag(Core.macroTag())
   local mplan = M.plan(desired, Core.cdb.skip)
@@ -232,7 +267,7 @@ function Core.setLineUnit(u)
 end
 
 --- Key groups per book page: "Place spells" (left page) and "Place squad keys" (right page).
-Core.PAGE_GROUPS = { spells = { kit = true, extra = true, sequence = true }, squad = { helper = true } }
+Core.PAGE_GROUPS = { spells = { kit = true, extra = true, sequence = true, custom = true }, squad = { helper = true } }
 --- Only the items of ctx's plan whose key is in one of `groups` (all when groups is nil).
 local function only(items, desired, groups)
   if not groups then return items end
@@ -327,6 +362,119 @@ end
 --- CURSOR_CHANGED (where the client has it): don't wait for the next poll.
 function Core.onCursorChanged() if Core.cursorWait and not C.cursorBusy() then Core.pollCursor() end end
 
+--- Make WBX macros now (a click: Use again, a ticked squad key) and put each on its button when that button is empty;
+--- a button holding something else is left alone (Place spells asks about those). A macro asked for gets a free
+--- slot before WoWBoxer's other new macros. names = {[name] = true}.
+function Core.makeNow(names, why)
+  return Core.whenSafe("Make macro", function()
+    local ctx = Core.compute()
+    if not ctx then return end
+    local free = (ctx.macros.charMax or 18) - (ctx.macros.charUsed or 0)
+    local list, full = {}, {}
+    for _, it in ipairs(ctx.macros.items) do
+      if names[it.name] then
+        if it.status == "noslot" and free > 0 then it.status = "create" end
+        if it.status == "create" then
+          if free > 0 or it.account then if not it.account then free = free - 1 end; list[#list + 1] = it else full[#full + 1] = it.label or it.name end
+        elseif it.status == "update" then list[#list + 1] = it end
+      end
+    end
+    if #list > 0 then M.apply({ items = list }) end
+    if #full > 0 then chat("|cffff8a80No free macro slot|r for " .. table.concat(full, ", ") .. ": remove a macro first.") end
+    local ctx2 = Core.computeFresh()
+    for _, b in ipairs(ctx2 and ctx2.bars.items or {}) do
+      if names[b.name] and b.status == "empty" and b.slot then
+        local idx = M.findIndex(b.name)
+        if idx then B.placeMacro(idx, b.slot, why or "made at once") end
+      end
+    end
+    Core.log("info", "made now (" .. tostring(why) .. "): " .. #list .. " macro(s)")
+    Core.changed()
+  end)
+end
+--- Remove WBX macros now (a click: Remove, an unticked squad key): the macro and its slot go at once (from your bars
+--- too); what stops WoWBoxer making it again is the caller's (skip, untick, extras list).
+function Core.removeNow(names, why)
+  return Core.whenSafe("Remove macro", function()
+    local n = M.deleteUnused(names)
+    if Core.cdb.wrote then for _, name in ipairs(names) do Core.cdb.wrote[name] = nil end end
+    Core.log("info", "removed (" .. tostring(why) .. "): " .. table.concat(names, ", ") .. " – " .. n .. " deleted")
+    Core.changed()
+  end)
+end
+
+--- Your own name for WoWBoxer macro `key` ("" or nil = back to its WBX name): the macro in the game is renamed at once
+--- (its buttons keep it), and its keybinds follow. Refused (ok=false, why) when the name is taken by another macro or
+--- isn't allowed; WoWBoxer still knows the macro by its key.
+function Core.renameMacro(key, name)
+  if C.inCombat() then return false, "not in combat" end
+  if not R.isOurs(key) then return false, "not a WoWBoxer macro" end
+  name = type(name) == "string" and name:match("^%s*(.-)%s*$") or ""
+  if name == key then name = "" end
+  local names = Core.cdb.macroNames
+  if type(names) ~= "table" then names = {}; Core.cdb.macroNames = names end
+  if name ~= "" then
+    if #name > R.NAME_LIMIT then return false, "at most " .. R.NAME_LIMIT .. " letters" end
+    if name:find("[%c\"]") then return false, "no special characters" end
+    if R.isOurs(name) then return false, "names starting with " .. R.PREFIX .. " are WoWBoxer's own" end
+    for k, v in pairs(names) do
+      if v == name and k ~= key then
+        if M.findIndex(k) then return false, "your macro " .. k .. " is already called \"" .. name .. "\"" end
+        names[k] = nil -- kept for a macro that is gone: free again
+      end
+    end
+    local old = M.gameName(key)
+    local accMax, charMax = C.macroLimits()
+    for i = 1, accMax + charMax do
+      local ok, n = pcall(GetMacroInfo, i)
+      if ok and n == name and n ~= old then return false, "a macro called \"" .. name .. "\" already exists - choose another name" end
+    end
+  end
+  local oldGame = M.gameName(key)
+  local idx = M.findIndex(key)
+  names[key] = name ~= "" and name or nil
+  local newGame = M.gameName(key)
+  local accMax = C.macroLimits()
+  if name == "" and idx and idx <= accMax then newGame = M.accountName(key, Core.macroTag()) or newGame end -- a general slot
+  if oldGame ~= newGame then
+    if idx then pcall(EditMacro, idx, newGame) end
+    local rebound = false
+    for _, k in ipairs({ GetBindingKey("MACRO " .. oldGame) }) do
+      if type(k) == "string" and k ~= "" and ns.Binds.writeMacro(k, newGame, "rename") then rebound = true end
+    end
+    if rebound then ns.Binds.save("rename") end
+    Core.log("info", "macro " .. key .. " is called \"" .. newGame .. "\" in the game now")
+  end
+  Core.changed()
+  return true
+end
+--- Own macros with a Name (Macro editor) that still have their WBX name in the game get that Name (once per login;
+--- a name another macro has gets a number, see Core.autoName).
+function Core.nameOwnMacros()
+  if C.inCombat() then return end
+  local _, me = Core.me()
+  local names = type(Core.cdb.macroNames) == "table" and Core.cdb.macroNames or {}
+  for i, c in pairs(me and me.customSeq or {}) do
+    local key = "WBX C" .. tostring(i)
+    if type(c) == "table" and type(c.name) == "string" and c.name ~= "" and not names[key] and M.findIndex(key) then
+      Core.autoName(key, c.name)
+    end
+  end
+end
+--- A name for a new own macro without asking: "My macro" (the editor's default) is never used, and a name that is
+--- taken gets a number ("Dots 2"); if nothing is free it keeps its WBX name.
+function Core.autoName(key, want)
+  want = type(want) == "string" and want:match("^%s*(.-)%s*$") or ""
+  if want == "" or want == "My macro" or type(Core.cdb) ~= "table" then return false end
+  want = want:sub(1, R.NAME_LIMIT)
+  if M.userName(key) == want or Core.renameMacro(key, want) then return true end
+  for i = 2, 9 do
+    local n = want:sub(1, R.NAME_LIMIT - 2) .. " " .. i
+    if M.userName(key) == n or Core.renameMacro(key, n) then return true end
+  end
+  return false
+end
+
 --- WBX macros this character no longer uses (a key that became a plain spell, Pet attack, an unticked squad key):
 --- names as in the game. Offered for removal on the banner; never deleted without the click.
 function Core.unusedMacros()
@@ -367,7 +515,7 @@ function Core.askReplace(items, opts)
       Core.log("info", "replace: yes (" .. #items .. ")")
       Core.sync({ barsOnly = true, replace = true, page = opts and opts.page })
     end, "Puts the WoWBoxer macros on these buttons. What was there is remembered for Reset to default." },
-    { "Keep", function() Core.log("info", "replace: kept") end, "Leaves the buttons as they are. Drag the macros yourself from My macros." },
+    { "Keep", function() Core.log("info", "replace: kept") end, "Leaves the buttons as they are. Drag the macros yourself from Macros." },
   })
   return true
 end
@@ -517,7 +665,7 @@ function Core.scanBars()
   local cdb = Core.cdb
   if not cdb then return end
   local found = {}
-  for slot = 1, 120 do
+  for slot = 1, B.MAX_SLOT do
     local a = C.actionInfo(slot)
     if a and a.kind == "macro" and R.isOurs(a.name) then
       local key = M.keyName(a.name) -- a general macro ("WBXRi K1") is key WBX K1
@@ -532,6 +680,14 @@ function Core.scanBars()
     if a and a.kind == "spell" and spellSlots[name] and not found[name] then found[name] = slot end
   end
   for name in pairs(spellSlots) do if not found[name] then spellSlots[name] = nil end end
+  -- remember each macro's button and that button's keybind, also after you take it off (Place spells puts it back)
+  for name, slot in pairs(found) do
+    local cmd = ns.Binds.commandForSlot(slot)
+    local key = cmd and GetBindingKey and GetBindingKey(cmd) or nil
+    if type(cdb.lastPlace) ~= "table" then cdb.lastPlace = {} end
+    local old = cdb.lastPlace[name]
+    cdb.lastPlace[name] = { slot = slot, key = (type(key) == "string" and key ~= "") and key or (old and old.key) or nil }
+  end
   cdb.slots = found
   for name in pairs(found) do cdb.placedOnce[name] = true end
   B.watch() -- a slot the player dragged a WBX macro onto keeps what was there before (Reset to default)
@@ -680,12 +836,18 @@ function Core.applyImport(res)
   local replaced = false
   -- this character's own leader unit and follow-line slot are its own view of the party: an import from another
   -- character (whose party numbers differ) must not overwrite them (bug 7, #help 10 Nov)
+  -- the same goes for its own guide, build, sequence keys, pins and level: an import replaced them with the other
+  -- client's older copy of this character
   local _, old = Core.me()
   local keep = old and not old.leader and { name = old.name, unit = old.unit, lineUnit = old.lineUnit } or nil
+  local OWN = { "guide", "build", "buildName", "talented", "seq", "seqTier", "customSeq", "pins", "seqTarget", "assist", "lines", "level", "race" }
+  local own = {}
+  if old then for _, k in ipairs(OWN) do own[k] = old[k] end end -- (the old entry is dropped: its tables move over)
   for i, s in ipairs(db.squads) do if s.id == res.squad.id then db.squads[i] = res.squad; replaced = true end end
-  if keep then
-    for _, x in ipairs(res.squad.members or {}) do
-      if not x.leader and C.sameName(x.name, keep.name) then x.unit, x.lineUnit = keep.unit, keep.lineUnit end
+  for _, x in ipairs(res.squad.members or {}) do
+    if keep and not x.leader and C.sameName(x.name, keep.name) then x.unit, x.lineUnit = keep.unit, keep.lineUnit end
+    if old and C.sameName(x.name, old.name) then
+      for _, k in ipairs(OWN) do if own[k] ~= nil then x[k] = own[k] end end
     end
   end
   if not replaced then db.squads[#db.squads + 1] = res.squad end
@@ -855,7 +1017,7 @@ end
 function Core.barsUnknown()
   local out = {}
   local orig = Core.cdb.barOriginal or {}
-  for slot = 1, 120 do
+  for slot = 1, B.MAX_SLOT do
     local c = B.content(slot)
     if c.kind == "macro" and R.isOurs(c.name) and orig[slot] == nil then out[#out + 1] = slot end
   end
@@ -1007,7 +1169,8 @@ end
 --- What a reminder is about (docs/squad-v2-simple.md §4): only real changes – a new key or a key whose macro text
 --- changed – and never a key the player keeps off the bars. Returns signature, count, items.
 function Core.pending(ctx)
-  local items, parts = {}, { tostring(ctx.level) }
+  -- (not keyed by level: "Don't remind me" lasted only until the next level-up)
+  local items, parts = {}, {}
   local keep = {}
   for _, d in ipairs(ctx.desired) do keep[d.name] = d.keepOff end
   for _, it in ipairs(ctx.macros.items) do
@@ -1029,10 +1192,10 @@ function Core.checkOffer(reason)
   local sig, n = Core.pending(ctx)
   if n == 0 or Core.lastOffer == sig then return end
   Core.lastOffer = sig
-  Core.log("info", "offer (" .. reason .. "): " .. n .. " macro(s) changed at level " .. ctx.level)
   local cdb = Core.cdb
   if not cdb.lastSync then return end -- only players who already use WoWBoxer keys
   if cdb.offerShown == sig or cdb.offerSeen == sig then return end
+  Core.log("info", "offer (" .. reason .. "): " .. n .. " macro(s) changed at level " .. ctx.level) -- (only when shown)
   cdb.offerShown = sig
   if ns.Minimap and ns.Minimap.SetAttention then ns.Minimap.SetAttention(true) end
   if not Core.remindersOn() then return end
@@ -1062,7 +1225,7 @@ end
 function Core.selftest(quiet)
   C.invalidateSpellbook()
   local db = Core.db
-  local r = { at = time and time() or 0, version = Core.VERSION, build = Core.addonVersion(), probe = C.probe(), player = Core.playerInfo() }
+  local r = { at = time and time() or 0, version = Core.addonVersion() or Core.VERSION, build = Core.addonVersion(), probe = C.probe(), player = Core.playerInfo() }
   local ctx, why = Core.compute()
   if ctx then
     r.member = { name = ctx.member.name, cls = ctx.member.cls, role = ctx.member.role, leader = ctx.member.leader, unit = ctx.member.unit, seq = ctx.member.seq }
@@ -1192,15 +1355,23 @@ function Core.selftest(quiet)
     tree.cls, tree.level, tree.build = ctx and ctx.member.cls or nil, C.safe(C.playerLevel()), ns.Data.meta and ns.Data.meta.build or nil
     r.talentTree = tree
   elseif not okTree then r.talentTree = { error = tostring(tree) } end
+  -- keep what other parts stored in this entry (the layout audit, the lockdown history): it used to be wiped
+  local old = db.diag[Core.charKey or "?"]
+  if type(old) == "table" then r.layout, r.lockdowns, r.teamSees = old.layout, old.lockdowns, old.teamSees end
   db.diag[Core.charKey or "?"] = r
-  Core.log("info", "selftest written to WoWBoxerDB.diag[" .. tostring(Core.charKey) .. "]")
+  if not quiet then Core.log("info", "selftest written to WoWBoxerDB.diag[" .. tostring(Core.charKey) .. "]") end
   if ns.Squad and ns.Team then
     local ok, rows = pcall(ns.Squad.readiness)
     local parts = {}
     for _, row in ipairs(ok and rows or {}) do
       if not row.me then parts[#parts + 1] = row.m.name .. "=" .. (row.inParty and "party" or "not in party") .. "/" .. (row.signal and "signal" or "no signal") end
     end
-    if #parts > 0 then Core.log("info", "team sees: " .. table.concat(parts, ", ") .. " (sent " .. C.sendStats.ok .. ", failed " .. C.sendStats.failed .. ")") end
+    -- logged only when it changed (it was written at every login)
+    local seen = table.concat(parts, ", ")
+    if #parts > 0 and seen ~= r.teamSees then
+      r.teamSees = seen
+      Core.log("info", "team sees: " .. seen .. " (sent " .. C.sendStats.ok .. ", failed " .. C.sendStats.failed .. ")")
+    end
   end
   if not quiet then chat("Selftest done. /reload (or log out) to save it to WTF\\...\\SavedVariables\\WoWBoxer.lua.") end
   return r
@@ -1401,6 +1572,7 @@ function Core.onEvent(event, ...)
     safeRegister("UPDATE_BINDINGS")
     safeRegister("UPDATE_MACROS")
     Core.scanBars()
+    if C_Timer and C_Timer.After then C_Timer.After(5, function() Core.whenSafe("Name own macros", Core.nameOwnMacros) end) end
     if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
     if ns.Team and ns.Team.Init then ns.Team.Init() end
     if ns.SeqStrip and ns.SeqStrip.Init then ns.SeqStrip.Init() end
@@ -1427,7 +1599,11 @@ function Core.onEvent(event, ...)
     if ns.BarFit then ns.BarFit.update("logout") end
   elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
     -- the window app (Auto-fit) or the player changed the window or the UI scale: measure again once it settles
-    if C_Timer and C_Timer.After and ns.BarFit then C_Timer.After(1, function() ns.BarFit.update(event); ns.BarFit.request(event) end) end
+    -- several of these come at once (alt-tab sends both): one measurement after they settle
+    if C_Timer and C_Timer.After and ns.BarFit and not Core.displayPending then
+      Core.displayPending = true
+      C_Timer.After(1, function() Core.displayPending = false; ns.BarFit.update(event); ns.BarFit.request(event) end)
+    end
   elseif event == "EDIT_MODE_LAYOUTS_UPDATED" then
     if ns.BarLayout and ns.BarLayout.onLayoutsUpdated then ns.BarLayout.onLayoutsUpdated() end
     if ns.BarFit then ns.BarFit.forceNext = true; ns.BarFit.request(event) end

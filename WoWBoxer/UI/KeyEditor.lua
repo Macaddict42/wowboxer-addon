@@ -109,11 +109,45 @@ function KE.save(m, c, index)
   copy[index or (#copy + 1)] = KE.engineDraft(c)
   local clean = ns.State.cleanCustom(copy)
   m.customSeq = clean
-  return index or #clean
+  local idx = index or #clean
+  if c.name and Core().autoName then Core().autoName("WBX C" .. idx, c.name) end -- its Name is its name in the game
+  return idx
 end
 
+--- Delete own macro C<index>: its game macro goes at once, and every later own macro moves down a number with its
+--- game macro, keybinds, targeting, text, extra lines and bar memory (before, those stayed on the old number and
+--- landed on the wrong macro).
 function KE.delete(m, index)
   local list = m.customSeq or {}
+  local n = #list
+  local M, cdb = ns.Macros, Core().cdb
+  local function nm(i) return "WBX C" .. i end
+  if list[index] and not ns.Compat.inCombat() then
+    local old = {}
+    for j = index, n do old[j] = M.gameName(nm(j)) end
+    local idx = M.findIndex(nm(index))
+    -- its keys first (else they would press the macro that moves up into its number)
+    if ns.Binds and ns.Binds.unbind then ns.Binds.unbind(nm(index)) end
+    if idx then pcall(_G.DeleteMacro, idx) end
+    for _, t in ipairs({ cdb.overrides, cdb.skip, cdb.slots, cdb.placedOnce, cdb.offBars, cdb.keyLines, cdb.wrote, cdb.overwrite, cdb.macroNames }) do
+      if type(t) == "table" then
+        t[nm(index)] = nil
+        for j = index + 1, n do t[nm(j - 1)] = t[nm(j)]; t[nm(j)] = nil end
+      end
+    end
+    local rebound = false
+    for j = index + 1, n do
+      local i2 = _G.GetMacroIndexByName and _G.GetMacroIndexByName(old[j])
+      local want = M.gameName(nm(j - 1)) -- (the settings moved above: its own name, or WBX C<j-1>)
+      if i2 and i2 > 0 and want ~= old[j] then
+        pcall(_G.EditMacro, i2, want)
+        for _, k in ipairs({ _G.GetBindingKey("MACRO " .. old[j]) }) do
+          if type(k) == "string" and k ~= "" and ns.Binds.writeMacro(k, want, "delete own macro") then rebound = true end
+        end
+      end
+    end
+    if rebound and ns.Binds and ns.Binds.save then ns.Binds.save("delete own macro") end
+  end
   if list[index] then table.remove(list, index) end
   m.customSeq = ns.State.cleanCustom(list)
 end
@@ -334,17 +368,14 @@ function KE.Build(parent)
     if m and f.index then KE.delete(m, f.index); Core().log("info", "own macro: deleted C" .. f.index) end
     KE.Close(); Core().changed()
   end, "Deletes this own macro from WoWBoxer (click twice). The game macro is removed the next time you update your macros.")
-  f.paste = W.button(f, "Paste…", 70, 24, function()
-    ns.CopyBox.ShowPaste(function(d) KE.usePasted(d) end)
-  end, "Paste a macro someone gave you (a WoWBoxer macro or plain macro text). Only the spell names are used.")
+  -- (no Paste button: it only kept the spell names of a pasted macro. Edit takes the whole text, new macros too)
   f.copy = W.button(f, "Copy…", 70, 24, function()
     local _, m = Core().me()
     if not (m and f.draft) then return end
     local r = KE.preview(m, f.draft, ns.Compat.playerLevel())
     ns.CopyBox.ShowCopy("Copy \"" .. (f.draft.name or "My macro") .. "\"", r.macro, ns.Share.encodeKey(f.draft, m.cls))
   end, "Shows the macro text and a WoWBoxer macro, ready to copy and give to others.")
-  f.copy:SetPoint("TOPRIGHT", pv, "BOTTOMRIGHT", 0, -4)
-  f.paste:ClearAllPoints(); f.paste:SetPoint("RIGHT", f.copy, "LEFT", -6, 0)
+  f.copy:SetPoint("TOPRIGHT", pv, "BOTTOMRIGHT", 0, -4) -- (moved next to Edit when the Macro editor shows it)
   f.delete:SetPoint("LEFT", f.copy, "RIGHT", 6, 0)
   -- the Macro editor's Save / Cancel / Edit macro… do this now (one window for every macro)
   f.save:SetScript("OnClick", function() ns.Advanced.saveEditor() end); f.save:Hide()

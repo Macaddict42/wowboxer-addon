@@ -52,9 +52,13 @@ do
   H.eq(chatCount(W, "changed at level"), 0, "after /reload: no chat line for the same change")
   H.ok(not (ns.UI.offer and ns.UI.offer:IsShown()), "after /reload: no toast for the same change")
   H.ok(ns.Core.pending(ns.Core.compute()) ~= "", "the change is still pending (the book shows it)")
-  -- a new change shows again, and Don't show again sticks across a reload
+  -- the same changes at the next level: no new reminder (it used to come back at every level)
   levelUp(W, ns, 30)
-  H.ok(ns.UI.offer and ns.UI.offer:IsShown(), "a new level-up shows again")
+  H.ok(not (ns.UI.offer and ns.UI.offer:IsShown()), "a level-up with the same changes: no toast")
+  -- a new change shows again, and Don't show again sticks across a reload
+  ns.Core.setLine("startattack", false)
+  ns.Core.checkOffer("test")
+  H.ok(ns.UI.offer and ns.UI.offer:IsShown(), "a new change shows again")
   H.eq(chatCount(W, "changed at level"), 1, "with one chat line")
   local sig = ns.UI.offer.sig
   H.eq(ns.UI.offer.never.label:GetText(), "Skip these changes", "the tick says it is about these changes (#help 10 Nov)")

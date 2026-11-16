@@ -424,7 +424,7 @@ local function buildEditor(f, parent)
       local key = def.key
       local c = W.check(e, def.short, function(_, v) local x = m(); if x then Core().setLine(key, v, x) end end)
       c:SetPoint("LEFT", prev and prev.label or e.linesLbl, "RIGHT", prev and 10 or 6, 0)
-      W.tip(c, def.label, def.about .. " Off: in none of this character's macros or sequence steps. One macro only: the icon on its card in My macros.")
+      W.tip(c, def.label, def.about .. " Off: in none of this character's macros or sequence steps. One macro only: the icon on its card in Macros.")
       c.def = def
       e.lineChecks[#e.lineChecks + 1] = c
       prev = c
@@ -543,7 +543,7 @@ SP.register({ key = "main", label = "Squad", tip = "Who plays together, who lead
     f.keys.ticks = {}
     for i = 1, #ns.Macros.SQUAD_KEYS do
       local c = W.check(f.keys, "Macro", function(self, v) if self.key then ns.Book.setSquadKey(self.key, v); SP.saved() end end)
-      c:SetPoint("TOPLEFT", 92 + ((i - 1) % 4) * 136, -((math.floor((i - 1) / 4)) * 22))
+      c:SetPoint("TOPLEFT", 92 + ((i - 1) % 4) * 118, -((math.floor((i - 1) / 4)) * 22)) -- 4th column clears Update macros
       W.tip(c, function() return c.label:GetText() end, function() return c.key and ns.Book.helperShort(c.key) .. " Ticked: WoWBoxer makes this macro for this character." or "" end)
       f.keys.ticks[i] = c
     end

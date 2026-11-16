@@ -22,6 +22,13 @@ R.SLASH_WHITELIST = {
   ["/follow"] = true, ["/cancelaura"] = true, ["/cancelform"] = true, ["/stopmacro"] = true,
   -- Invite squad (docs/squad-v2-simple.md §3): a normal chat command; the others still accept by hand
   ["/invite"] = true,
+  -- targeting, pet and item commands people put in their own macros (Edit refused them): no code, no chat
+  ["/targetenemy"] = true, ["/targetfriend"] = true, ["/targetlasttarget"] = true, ["/targetlastenemy"] = true,
+  ["/targetlastfriend"] = true, ["/targetparty"] = true, ["/targetraid"] = true, ["/targetexact"] = true, ["/tar"] = true,
+  ["/targetenemyplayer"] = true, ["/targetfriendplayer"] = true, ["/petassist"] = true, ["/petmoveto"] = true,
+  ["/petautocasttoggle"] = true, ["/petautocaston"] = true, ["/petautocastoff"] = true, ["/dismount"] = true,
+  ["/equip"] = true, ["/equipslot"] = true, ["/castrandom"] = true, ["/userandom"] = true, ["/stand"] = true, ["/sit"] = true,
+  ["/cancelqueuedspell"] = true, ["/stopspelltarget"] = true, ["/changeactionbar"] = true, ["/swapactionbar"] = true,
 }
 R.SLASH_BLOCKED = { ["/run"] = true, ["/script"] = true, ["/console"] = true, ["/click"] = true, ["/dump"] = true }
 

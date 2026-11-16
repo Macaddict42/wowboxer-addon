@@ -241,7 +241,7 @@ W.SEQ_CLASSES = "Every class has built-in sequence macros – make your own in t
 function W.seqComing() return next(ns.Engine.seqTable()) == nil end
 function W.seqMissingText()
   if W.seqComing() then
-    return "Sequence macros for " .. ((ns.Data.game and ns.Data.game.name) or "this game") .. " are coming. Your own macros (My macros) work already."
+    return "Sequence macros for " .. ((ns.Data.game and ns.Data.game.name) or "this game") .. " are coming. Your own macros (Macros page) work already."
   end
   return W.SEQ_CLASSES
 end

@@ -25,10 +25,10 @@ function tab.build(p)
   end
   p.bar1 = W.dropdown(p, { width = 170, values = barValues, get = function() return Core().cdb.primaryBar end,
     set = function(v) Core().cdb.primaryBar = v; Core().cdb.slots = {}; Core().changed() end })
-  row(-22, "Main macros", p.bar1, "Where Place all puts macros 1–8, the sequences and Follow/Assist. Macros you dragged somewhere yourself stay there.")
+  row(-22, "Spell macros on", p.bar1, "The action bar Place spells puts your spell macros, the sequences and Follow/Assist on. Macros you dragged somewhere yourself stay there.")
   p.bar2 = W.dropdown(p, { width = 170, values = barValues, get = function() return Core().cdb.secondaryBar end,
     set = function(v) Core().cdb.secondaryBar = v; Core().cdb.slots = {}; Core().changed() end })
-  row(-50, "Other macros", p.bar2, "Where Place all puts your own macros, Focus and the pet macros.")
+  row(-50, "Other macros on", p.bar2, "The action bar Place spells puts your own macros, Focus, Invite and the pet macros on.")
   p.scale = W.dropdown(p, { width = 170, values = function() return SCALES end,
     get = function() local v = tonumber(Core().db.settings.scale) or 1; return math.floor(v * 10 + 0.5) / 10 end,
     set = function(v) Core().db.settings.scale = v; UI.ApplyWindowSettings() end })
@@ -61,11 +61,11 @@ function tab.build(p)
   for _, def in ipairs(ns.Macros.LINES) do
     local key = def.key
     local c = W.check(p, def.short, function(_, v) Core().setLine(key, v) end)
-    W.tip(c, def.label, def.about .. " Off: in none of your macros or sequence steps. One macro only: the icon on its card in My macros. Copy settings sends it along.")
+    W.tip(c, def.label, def.about .. " Off: in none of your macros or sequence steps. One macro only: the icon on its card in Macros. Copy settings sends it along.")
     c.def = def
     p.lineChecks[#p.lineChecks + 1] = c
   end
-  p.guideBtn = W.button(p, "Guide", 80, 22, function() ns.Book.ShowGuide() end, "Opens the 3-step guide again on the My macros page.")
+  p.guideBtn = W.button(p, "Guide", 80, 22, function() ns.Book.ShowGuide() end, "Opens the 4-step guide again on the Macros page.")
   p.guideBtn:SetPoint("TOPLEFT", 0, -238)
   p.macrosOnly = W.button(p, "Macros only", 100, 22, function() Core().sync({ macrosOnly = true }) end,
     "Creates or updates your WoWBoxer macros without touching your action bars (drag them yourself from the book).")
@@ -82,7 +82,7 @@ function tab.build(p)
   -- Reset to default (docs/advanced-mode.md §5): a red text button at the bottom; opens a two-step window
   p.resetAll = CreateFrame("Button", nil, p)
   p.resetAll:SetSize(110, 18)
-  p.resetAll:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -2, 2)
+  p.resetAll:SetPoint("TOPRIGHT", p, "TOPRIGHT", -2, -4) -- (at the bottom the addon list ran into it)
   p.resetAll.text = W.text(p.resetAll, "GameFontHighlightSmall", nil, { 1, 0.4, 0.35 }, "RIGHT")
   p.resetAll.text:SetPoint("RIGHT", 0, 0)
   p.resetAll.text:SetText("Reset to default…")

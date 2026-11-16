@@ -50,7 +50,7 @@ local function plan()
   if A then
     local KE = ns.KeyEditor
     list[#list + 1] = { "editor-new-spells", function()
-      UI.Select("custom"); A.openNew(UI.panels.custom)
+      UI.Select("keys"); A.openNew(UI.panels.keys, "Shot")
       if KE.frame and KE.frame.choice then KE.frame.choice.single:Click() end
     end }
     list[#list + 1] = { "editor-new-targeting", function() A.showSection("target") end, function() if A.ef then A.ef:Hide() end end }

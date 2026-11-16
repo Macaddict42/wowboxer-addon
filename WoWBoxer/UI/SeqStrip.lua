@@ -28,7 +28,7 @@ local function macroNameAt(slot)
   if G.GetActionText then
     local ok, t = pcall(G.GetActionText, slot)
     t = ok and ns.Compat.safe(t) or nil
-    if type(t) == "string" and t ~= "" then return t end
+    if type(t) == "string" and t ~= "" then return (ns.Macros.userKey and ns.Macros.userKey(t)) or t end
   end
   if not G.GetActionInfo then return nil end
   local ok, kind, id = pcall(G.GetActionInfo, slot)

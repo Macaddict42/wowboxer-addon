@@ -81,7 +81,7 @@ A.ef.back:Click()
 H.eq(Core.cdb.overrides["WBX C2"], nil, "Back to WoWBoxer's version")
 -- 6. drag and Place
 Core.pickup("WBX C2"); W.env.PlaceAction(50); W.env.ClearCursor(); W.fire("ACTIONBAR_SLOT_CHANGED", 50); W.flush()
-H.eq(W.slotMacroName(50), "WBX C2", "dragged to a button")
+H.eq(W.slotMacroName(50), "Two dots", "dragged to a button (the macro has its own name in the game)")
 Core.cdb.offBars["WBX C1"] = false
 Core.sync({})
 H.ok(ns.Macros.findIndex("WBX C1") and status("WBX C1") == "same", "Place: C1 created")

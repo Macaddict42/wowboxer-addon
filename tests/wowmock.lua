@@ -44,6 +44,11 @@ function Mock.new(H, opts)
   env.MAX_ACCOUNT_MACROS, env.MAX_CHARACTER_MACROS = 120, W.maxChar
   env.GetNumMacros = function() return #W.acc, #W.char end
   env.GetMacroInfo = function(i) local m = byIndex(i); if m then return m.name, m.icon, m.body end end
+  env.GetMacroIndexByName = function(name)
+    for i, x in ipairs(W.acc) do if x.name == name then return i end end
+    for i, x in ipairs(W.char) do if x.name == name then return 120 + i end end
+    return 0
+  end
   env.CreateMacro = function(name, icon, body, perChar)
     protected("CreateMacro"); call("CreateMacro")
     local list = perChar and W.char or W.acc

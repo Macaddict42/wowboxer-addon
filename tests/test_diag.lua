@@ -84,7 +84,7 @@ do
   m.seq = "medium"
   local key
   for _, d in ipairs(Core.compute().desired) do if d.key == "S1" then key = d end end
-  H.ok(key and key.body:find("[@party1target,harm,nodead] reset=combat Sinister Strike, Sinister Strike, Slice and Dice", 1, true),
+  H.ok(key and key.body:find("/assist [noharm][dead] party1", 1, true) and key.body:find("[harm,nodead] reset=combat Sinister Strike, Sinister Strike, Slice and Dice", 1, true),
     "Rogue follower: combo sequence on the leader's target: " .. tostring(key and key.body))
   H.ok(key.body:find("/startattack", 1, true) and #key.body <= 255, "starts auto attack, at most 255 characters")
   local r = Core.selftest(true)

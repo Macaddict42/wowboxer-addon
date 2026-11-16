@@ -36,9 +36,9 @@ H.ok(table.concat(kinds, ","):find("leader", 1, true), "prefill: the engine's ch
 -- every target kind on this client
 local function cond(t) return (O.cond(t, ctx)) end
 H.eq(cond({ who = "mouseover", help = true, nodead = true }), "[@mouseover,help,nodead]", "mouseover")
-H.eq(cond({ who = "target", help = false, nodead = true }), "[@target,harm,nodead]", "your target")
+H.eq(cond({ who = "target", help = false, nodead = true }), "[harm,nodead]", "your target (no @target needed)")
 H.eq(cond({ who = "leader", help = true, nodead = true }), "[@party2,help,nodead]", "the leader: Dorin is party2 here")
-H.eq(cond({ who = "leadertarget", help = false, nodead = true }), "[@party2target,harm,nodead]", "the leader's target")
+H.eq(cond({ who = "leadertarget", help = false, nodead = true }), "[harm,nodead]", "the leader's target: your target, after /assist Dorin")
 H.eq(cond({ who = "member", name = "Bo", help = true, nodead = true }), "[@party1,help,nodead]", "a member by name: Bo is party1")
 H.eq(cond({ who = "member", name = "Bo", pet = true, help = true, nodead = true }), "[@party1pet,help,nodead]", "Bo's pet: party1pet")
 H.eq(cond({ who = "member", name = "Anna", help = true }), "[@player,help]", "myself by name: player, Skip if dead off")
@@ -58,7 +58,7 @@ H.eq(#O.checkConditionals("/cast [@raid40pet,help,nodead][@party4pet,help][@play
 -- Also heal Bo's pet: after the leader, one click
 H.ok(Core.alsoHeal(NAME, "Bo"), "Also heal Bo's pet")
 local d = desired(NAME)
-local a, b = d.body:find("[@party2,help,nodead]", 1, true), d.body:find("[@party1pet,help,nodead]", 1, true)
+local a, b = d.body:find("[@Dorin,help,nodead]", 1, true), d.body:find("[@party1pet,help,nodead]", 1, true)
 H.ok(a and b and b > a, "Bo's pet comes after the leader: " .. d.body)
 H.ok(d.ok and #d.body <= 255, "still a valid macro (" .. #d.body .. ")")
 H.ok(d.override and Core.cdb.overrides[NAME].targets, "stored per character")
@@ -101,7 +101,13 @@ local dps
 for _, x in ipairs(Core.compute().desired) do if not dps and x.group == "kit" and x.body:find("harm", 1, true) then dps = x end end
 Core.setOverride(dps.name, { targets = { { who = "leadertarget", help = false, nodead = true } }, startattack = true })
 local dd = desired(dps.name)
-H.ok(dd.body:find("\n/startattack [@party2target,harm,nodead]", 1, true), "startattack on, on the same chain: " .. dd.body)
+H.ok(dd.body:find("\n/startattack [harm,nodead]", 1, true), "startattack on, on the same chain: " .. dd.body)
+H.eq(select(2, dd.body:gsub("/assist ", "")), 1, "one /assist line: " .. dd.body)
+H.ok(dd.body:find("\n/assist [noharm][dead] Dorin\n/cleartarget [help]\n", 1, true), "the leader's target: taken by name only without a live enemy")
+-- a list without anyone's target: no /assist at all
+Core.setOverride(dps.name, { targets = { { who = "mouseover", help = false, nodead = true }, { who = "target", help = false, nodead = true } } })
+H.ok(not desired(dps.name).body:find("/assist", 1, true), "no one's target in the list: no /assist: " .. desired(dps.name).body)
+Core.setOverride(dps.name, { targets = { { who = "leadertarget", help = false, nodead = true } }, startattack = true })
 Core.setOverride(dps.name, nil)
 H.eq(desired(dps.name).body, dps.body, "Back to WoWBoxer's version")
 

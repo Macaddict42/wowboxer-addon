@@ -1,5 +1,6 @@
--- Follow in a line (docs/follow-line.md): Follow (line) follows the member ahead through THIS client's party unit,
--- Follow leader is the old Follow; both on party units, never names; the slot is saved only after a click.
+-- Follow in a line (docs/follow-line.md): Follow (line) follows the member ahead, Follow leader is the old Follow.
+-- Both name the squad member ("/follow Anna"), so a party reshuffle or a stranger in the group changes nothing; the
+-- party slot is still worked out (and saved after a click) to find the name, and kept for when you're not grouped.
 local dir = (arg[0]:match("^(.*)/[^/]+$") or ".")
 local H = dofile(dir .. "/harness.lua")
 local Mock = dofile(dir .. "/wowmock.lua")
@@ -40,8 +41,8 @@ do
   local _, ns = boot("Anna", "PRIEST", { party1 = "Bo", party2 = "Dorin" }, { party1 = INFO, party2 = INFO })
   local _, me = ns.Core.me()
   me.unit = "party2"
-  H.eq(key(ns, "WBX Follow").body, "/follow party2", "follower 1: Follow (line) follows the leader")
-  H.eq(key(ns, "WBX FollowLead").body, "/follow party2", "follower 1: Follow leader too")
+  H.eq(key(ns, "WBX Follow").body, "/follow Dorin", "follower 1: Follow (line) follows the leader")
+  H.eq(key(ns, "WBX FollowLead").body, "/follow Dorin", "follower 1: Follow leader too")
 end
 
 -- follower 2 (Bo): follows Anna through Bo's own party slot; saved after a click; reshuffle → hint + Fix
@@ -49,9 +50,9 @@ do
   local W, ns, s = boot("Bo", "WARLOCK", { party1 = "Dorin", party2 = "Cid", party3 = "Anna" }, { party1 = INFO, party2 = INFO, party3 = INFO })
   local Core = ns.Core
   local _, me = Core.me()
-  H.eq(key(ns, "WBX Follow").body, "/follow party3", "follower 2: follows Anna as party3 on this client")
-  H.eq(key(ns, "WBX FollowLead").body, "/follow party1", "Follow leader: the leader's unit (today's body)")
-  for _, n in ipairs({ "WBX Follow", "WBX FollowLead" }) do H.ok(not key(ns, n).body:find("Anna", 1, true) and not key(ns, n).body:find("Dorin", 1, true), "no names in " .. n) end
+  H.eq(key(ns, "WBX Follow").body, "/follow Anna", "follower 2: follows Anna (party3 on this client)")
+  H.eq(key(ns, "WBX FollowLead").body, "/follow Dorin", "Follow leader: the leader by name")
+  for _, n in ipairs({ "WBX Follow", "WBX FollowLead" }) do H.ok(not key(ns, n).body:find("party", 1, true), "no party slots in " .. n) end
   H.eq(me.lineUnit, nil, "nothing saved before a click")
   H.eq(ns.Squad.lineHint(), nil, "no hint before a slot was ever saved")
   Core.sync({})
@@ -64,7 +65,7 @@ do
   W.party = { party1 = "Dorin", party2 = "Anna", party3 = "Cid" }
   local item
   for _, it in ipairs(Core.compute().macros.items) do if it.name == "WBX Follow" then item = it end end
-  H.eq(item.status, "update", "reshuffle: Follow (line) shows as to update")
+  H.eq(item.status, "same", "reshuffle: Follow (line) still follows Anna, nothing to update")
   local u, ahead = ns.Squad.lineHint()
   H.ok(u == "party2" and ahead.name == "Anna", "reshuffle: the hint names the new slot")
   local fix
@@ -79,12 +80,12 @@ do
   -- no party: the saved slot, then the leader
   W.party, W.env.IsInGroup = {}, function() return false end
   W.env.GetNumGroupMembers = function() return 0 end
-  H.eq(key(ns, "WBX Follow").body, "/follow party2", "no party: the saved slot")
+  H.eq(key(ns, "WBX Follow").body, "/follow Anna", "no party: still Anna (the saved slot's last name)")
   local warn
   for _, it in ipairs(ns.Checklist.items()) do if it.text == "Anna is not in your party" then warn = it end end
   H.ok(warn and warn.hint:find("last known slot (party2)", 1, true), "checklist warns: Anna is not in your party")
   me.lineUnit = nil
-  H.eq(key(ns, "WBX Follow").body, "/follow " .. me.unit, "nothing saved: follows the leader")
+  H.eq(key(ns, "WBX Follow").body, "/follow Dorin", "nothing saved: follows the leader")
   -- reordering the squad changes the line: Bo first → follows the leader
   ns.UI.Open("squad")
   ns.SquadPages.editing = me.id; ns.UI.Refresh()

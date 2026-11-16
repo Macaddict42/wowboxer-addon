@@ -157,6 +157,9 @@ for _, n in ipairs(W.env.UISpecialFrames) do inEsc[n] = true end
 H.ok(inEsc.WoWBoxerAdvancedConfirm and not inEsc.WoWBoxerMainFrame, "Esc closes the dialog only, not the window")
 c.cancel:Click()
 H.ok(not c:IsShown() and not Core.advanced(), "Cancel: still Standard")
+W.flush() -- the window goes back on the Esc list a frame later
+-- (the flush also ran the waiting "macros changed" toast: it is a dialog too, so Esc closes it first)
+if W.env.WoWBoxerPopup and W.env.WoWBoxerPopup:IsShown() then W.env.WoWBoxerPopup:Hide(); W.flush() end
 inEsc = {}
 for _, n in ipairs(W.env.UISpecialFrames) do inEsc[n] = true end
 H.ok(inEsc.WoWBoxerMainFrame, "dialog closed: Esc closes the window again")
@@ -190,7 +193,7 @@ new:Click("LeftButton")
 KE.frame.choice.seq:Click()
 H.eq(KE.frame.kind.label:GetText(), "Sequence", "short type label")
 local pv = KE.frame.copy:GetPoint(1)
-H.eq(pv, "TOPRIGHT", "Copy… sits under the preview box")
+H.eq(pv, "LEFT", "Copy… sits in the button row next to Edit")
 local wrapped = Wd.wrapMacro("/cast [@mouseover,help,nodead][@party1,help,nodead][@party1pet,help,nodead][@player] Flash Heal", 200, 10)
 for line in (wrapped .. "\n"):gmatch("([^\n]*)\n") do
   H.ok(not line:find("node$") and not line:find("^%s*ad%]"), "no mid-word break: " .. line)

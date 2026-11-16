@@ -353,7 +353,7 @@ for slot = 1, 4 do
   s.members[1].name = "Dorin"
   local k = byKey(ns)
   H.eq(me.unit, "party" .. slot, "bug 7: the leader in party" .. slot .. ": the unit follows")
-  H.eq(k.Assist and k.Assist.body, "/assist party" .. slot, "bug 7: the hunter's Assist macro points at the leader (party" .. slot .. ")")
+  H.eq(k.Assist and k.Assist.body, "/assist Dorin", "bug 7: the hunter's Assist macro points at the leader by name (party" .. slot .. ")")
   -- an import from another character (its own party numbers) keeps this character's unit
   local str = ns.Core.exportString()
   me.unit = "party" .. slot

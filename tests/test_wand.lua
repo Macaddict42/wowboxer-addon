@@ -21,7 +21,7 @@ for _, game in ipairs({ { "forever", 16001, "camelot" }, { "era", 11509 }, { "tb
       local m = member(c[1], c[2], leader)
       local d = byKey(M.desired(m, 20, {}))
       H.ok(d.Wand and d.Wand.body:find("!Shoot", 1, true), who .. "has the Wand key")
-      H.ok(leader or d.Wand.body:find("@party1target", 1, true) or d.Wand.body:find("/assist party1", 1, true), who .. "the Wand key shoots the leader's target")
+      H.ok(leader or d.Wand.body:find("/assist [noharm][dead] party1", 1, true), who .. "the Wand key shoots the leader's target")
       local k1 = d.K1
       H.ok(k1 and k1.body:find("\n/cast [^\n]* !Shoot$") ~= nil, who .. "K1 (" .. (k1 and k1.label or "?") .. ") ends with the wand")
       -- never wand first: tested in game (1.2.0-test.1), "/cast !Shoot" first made every press only wand
@@ -92,7 +92,7 @@ for _, game in ipairs({ { "forever", 16001, "camelot" }, { "era", 11509 }, { "tb
       local s1 = KE.preview(m, { id = "y", name = "Wand", kind = "single", aim = "harm", steps = { "Shoot" }, filler = "", fills = 1, reset = "combat" }, 20)
       local _, n1 = s1.macro:gsub("Shoot", "")
       H.eq(n1, 1, who .. "single Shoot: " .. s1.macro)
-      H.ok(leader or s1.macro:find("@party1target", 1, true), who .. "single Shoot aims at the leader's target")
+      H.ok(leader or s1.macro:find("/assist [noharm][dead] party1", 1, true), who .. "single Shoot takes the leader's target (no live enemy of its own): " .. s1.macro)
       -- Shoot first in a priority: the lines below never run (warned)
       local _, w2 = KE.preview(m, { id = "z", name = "x", kind = "priority", aim = "harm", steps = { "Shoot", nuke }, filler = "", fills = 1, reset = "combat" }, 20)
       H.ok(#w2 > 0, who .. "Shoot first is warned about")

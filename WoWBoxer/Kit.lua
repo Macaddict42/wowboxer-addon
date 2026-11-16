@@ -447,7 +447,7 @@ function K.kitSlots(m, L, live)
 end
 
 --- Helper macros for the member (followers: follow/assist/focus; pet classes: pet attack/recall). Only whitelisted commands.
-function K.helpers(m)
+function K.helpers(m, keyLines)
   local u = E.units(m.unit)
   local out = {}
   if not m.leader then
@@ -462,11 +462,15 @@ function K.helpers(m)
     out[#out + 1] = { key = "PetBack", label = "Pet passive + follow", body = "/petpassive\n/petfollow" }
   end
   if E.WAND_CLASSES[m.cls] then
-    local chain = m.leader and "[@mouseover,harm,nodead][harm,nodead]" or ("[@mouseover,harm,nodead][@" .. u.mainTarget .. ",harm,nodead][harm,nodead]")
-    -- with "Take the leader's target": target it first, then shoot at the own target (auto-repeat keeps going only there)
-    local body = K.takesTarget(m) and ("#showtooltip Shoot\n/assist " .. u.main .. "\n/cast [harm,nodead] !Shoot")
+    local chain = "[@mouseover,harm,nodead][harm,nodead]"
+    -- with "Take the leader's target": take it when you have no live enemy, then shoot at your own target
+    -- (auto-repeat keeps going only there)
+    local per = type(keyLines) == "table" and keyLines["WBX Wand"] or nil
+    local takes = K.takesTarget(m)
+    if per and per.assist ~= nil then takes = per.assist and not m.leader end -- the Wand macro's own choice
+    local body = takes and ("#showtooltip Shoot\n" .. E.assistLine(K.memberCtx(m)) .. "\n/cleartarget [help]\n/cast [harm,nodead] !Shoot")
       or ("#showtooltip Shoot\n/cast " .. chain .. " !Shoot")
-    out[#out + 1] = { key = "Wand", label = "Shoot your wand at " .. (m.leader and "your target" or "the leader's target"), body = body }
+    out[#out + 1] = { key = "Wand", label = "Shoot your wand at " .. (takes and "the leader's target" or "your target"), body = body }
   end
   return out
 end

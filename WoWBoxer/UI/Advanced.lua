@@ -131,6 +131,7 @@ function A.iconOf(tex, t, ctx)
     W.setIcon(tex, "INV_Misc_Head_Human_01"); return
   end
   if t.pet or (t.who == "unit" and t.unit:find("pet", 1, true)) then W.setIcon(tex, ICON.mypet); return end
+  if t.who == "membertarget" then W.setIcon(tex, ICON.leadertarget); return end
   if t.who == "member" or t.who == "leader" then
     local m
     for _, x in ipairs(ctx.squad and ctx.squad.members or {}) do
@@ -387,11 +388,17 @@ local function editorFrame(parent)
   W.setStyle(f.back, "ghost")
   -- the editor is reused under other panels (SetParent), so the text window opens under the editor's parent NOW, not
   -- the one it was first built on (Retik, #help 10 Nov: "Edit text" closed the editor and opened nothing)
-  f.text = W.button(f, "Edit text", 80, 24, function()
+  f.text = W.button(f, "Edit", 80, 24, function()
     local n, l, body, p = f.name, f.label, f.body or f.base, f:GetParent() or parent
+    if not n then
+      -- a new macro: type or paste its text; Save makes the own macro from it (A.saveNewText)
+      local _, m = Core().me()
+      n, l, body = "WBX C" .. (#(m and m.customSeq or {}) + 1), "New macro", ""
+      A.newText = n
+    end
     if A.openText(p, n, l, body) then f:Hide() end
   end,
-    "The last resort: write the macro text yourself (checked live). The macro is then frozen on level-ups.")
+    "Type or paste the macro text yourself (checked live). WoWBoxer then writes your text as it is and doesn't change it on level-ups.")
   f.text:SetPoint("LEFT", f.back, "RIGHT", 6, 0)
   -- the section tabs: 1 Spells (own macros: steps, filler, kind, presets) · 2–4 Targeting, Options, Preview
   f.tabTarget = W.button(f, "Targeting", 84, 20, function() A.showSection("target") end, "Targeting (drag and drop), options and the preview.")
@@ -461,6 +468,12 @@ function A.showSection(which)
   -- one character counter: on the Spells tab of an own macro the spells box shows its own (#help 10 Nov: 167/255 was
   -- drawn over 81/255)
   f.info:SetShown(not (spells and f.own ~= nil))
+  local kf = ns.KeyEditor and ns.KeyEditor.frame
+  if kf and kf.copy and kf.delete and f.text and not kf.rowMoved then
+    kf.rowMoved = true
+    kf.copy:ClearAllPoints(); kf.copy:SetPoint("LEFT", f.text, "RIGHT", 6, 0)
+    kf.delete:ClearAllPoints(); kf.delete:SetPoint("LEFT", kf.copy, "RIGHT", 6, 0)
+  end
   f.editSpells:Hide() -- the Spells tab does this now (one owner per control)
   f.tabSpells:Show(); f.tabTarget:Show()
   W.setSelected(f.tabSpells, spells); W.setSelected(f.tabTarget, not spells)
@@ -601,13 +614,25 @@ A.baseOf = baseOf
 function A.flow(step) Core().log("info", "own macro: " .. step) end
 
 --- New macro: the same Macro editor, starting with "Single spell or Sequence".
-function A.openNew(parent)
+--- New macro (the button, the tile, the menu): first its name (the same window as Rename), then the editor.
+function A.newMacro(parent)
+  A.askName("New macro", "", "Its name in the game and in WoWBoxer (at most " .. ns.Rules.NAME_LIMIT .. " letters).", function(v)
+    v = v:match("^%s*(.-)%s*$")
+    if v == "" then return false, "Type a name" end
+    if ns.Rules.isOurs(v) then return false, "Names starting with " .. ns.Rules.PREFIX .. " are WoWBoxer's own" end
+    A.openNew(parent, v)
+  end)
+  return true
+end
+function A.openNew(parent, named)
   local f = editorFrame(parent)
   f.name, f.label, f.own, f.ctx, f.touched = nil, "New macro", "new", O().ctx(), false
   f.targets, f.opts, f.base, f.help = {}, {}, "", nil
   f.lineList, f.lines, f.linesOrig = {}, {}, {}
-  f.title:SetText("Macro editor – New macro")
+  f.title:SetText("Macro editor – " .. (type(named) == "string" and named or "New macro"))
   ns.KeyEditor.Open(f.spellsBox, nil)
+  local kf = ns.KeyEditor.frame
+  if type(named) == "string" and kf and kf.draft then kf.draft.name = named; kf.name:SetText(named) end
   f:Show()
   A.flow("new")
   A.showSection("spells")
@@ -632,7 +657,7 @@ function A.openEditor(parent, name, label)
   local ov = Core().cdb.overrides[name]
   local base = own and baseOf({ own = own, name = name }) or (d.engineBody or d.body)
   f.base = base
-  f.help = base:find("help", 1, true) and true or (base:find("harm", 1, true) and false or nil)
+  f.help = O().helpOf(base)
   f.targets, f.opts = {}, {}
   local src = (ov and ov.targets and #ov.targets > 0) and ov.targets or O().fromBody(base, f.ctx)
   for i, t in ipairs(src) do f.targets[i] = copy(t) end
@@ -666,10 +691,10 @@ end
 function A.refreshEditor()
   local f = A.ef
   if not (f and f:IsShown()) then return end
-  f.back:SetShown(f.name ~= nil); f.text:SetShown(f.name ~= nil and A.on())
+  f.back:SetShown(f.name ~= nil); f.text:SetShown(f.name ~= nil or f.own == "new")
   if f.own or (f.lines and next(f.lines)) then
     f.base = baseOf(f)
-    f.help = f.base:find("help", 1, true) and true or (f.base:find("harm", 1, true) and false or nil)
+    f.help = O().helpOf(f.base)
   end
   A.refreshLines()
   -- available targets: every target this client can use, in groups (Common, Squad, Party, Raid folded); Common and
@@ -736,6 +761,10 @@ function A.refreshEditor()
   local ov = A.draft()
   local body, missing = f.base, {}
   if ov then body, missing = O().apply(f.base, ov, f.ctx) end
+  local saved = f.name and Core().cdb.overrides[f.name]
+  local ownText = saved and type(saved.text) == "string" and not f.touched
+  if ownText then body = saved.text
+  elseif Core().unitNames and f.ctx and f.ctx.squad then body = ns.Macros.nameUnits(body, Core().unitNames(f.ctx.squad)) end
   f.body = body
   A.fitPreview(f.preview, body)
   local ok, why = ns.Rules.validateMacro(f.name or "WBX C1", body)
@@ -818,7 +847,7 @@ local function textFrame(parent)
   f.title = W.text(f, "GameFontNormal", nil, W.GOLD)
   f.title:SetPoint("TOPLEFT", 14, -12)
   f.title.wbxCopy = "data"
-  local sf, eb = W.editBox(f, 520, 150)
+  local eb, sf = W.editBox(f, 520, 150) -- (W.editBox returns the edit box first)
   sf:SetPoint("TOPLEFT", 16, -36)
   f.sf, f.edit = sf, eb
   eb:SetMaxLetters(400)
@@ -834,6 +863,7 @@ local function textFrame(parent)
   f.note.wbxCopy = "sentence"
   f.save = W.button(f, "Save", 70, 24, function()
     local ok = O().checkText(f.name, f.edit:GetText())
+    if ok and A.newText == f.name then ok = A.saveNewText(f.edit:GetText()) end
     if ok then Core().setOverride(f.name, { text = f.edit:GetText() }); f:Hide() end
   end, "Saves this text as the macro's macro. Press Update macros afterwards to write it.")
   f.save:SetPoint("BOTTOMRIGHT", -12, 10)
@@ -849,12 +879,48 @@ end
 --- The text window for macro `name` – every kind (single spell, sequence, priority, squad keys). body = the text to
 --- start from when the macro is not in this character's list right now (an own macro just saved, a key not built at
 --- this level). Returns true when it opened.
+--- A new macro saved from Edit: the own macro is made from the spells the text casts (for the book), then the text
+--- itself is kept as its text. false (with a message) when the text casts none of your spells.
+function A.saveNewText(text)
+  local _, m = Core().me()
+  if not m then return false end
+  local byName = {}
+  for _, s in ipairs(ns.Kit.customSpellsOf(m)) do byName[s.name] = true end
+  local steps, seq = {}, false
+  for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+    local cmd, arg = line:match("^(/%S+)%s*(.*)$")
+    if cmd == "/castsequence" or cmd == "/cast" then
+      while arg:sub(1, 1) == "[" do local j = arg:find("]", 1, true); if not j then break end; arg = arg:sub(j + 1):gsub("^%s+", "") end
+      if cmd == "/castsequence" then
+        seq = true
+        arg = arg:gsub("^reset=%S+%s*", "")
+        for n in (arg .. ","):gmatch("([^,]*),") do n = n:match("^%s*!?(.-)%s*$"); if byName[n] then steps[#steps + 1] = n end end
+      else
+        local n = arg:match("^!?(.-)%s*$")
+        if byName[n] then steps[#steps + 1] = n end
+      end
+    end
+  end
+  if #steps == 0 then Core().print("|cffff8a80Not saved:|r the macro needs a /cast or /castsequence line with one of your spells."); return false end
+  local draft = ns.KeyEditor.frame and ns.KeyEditor.frame.draft or {}
+  local name = draft.name
+  if not name or name == "" or name == "My macro" then name = steps[1] end
+  local c = { name = name, kind = seq and "sequence" or (#steps > 1 and "priority" or "single"), aim = draft.aim or "harm",
+    steps = steps, filler = "", fills = 2, reset = draft.reset or "combat" }
+  local idx, err = ns.KeyEditor.save(m, c, nil)
+  if not idx then Core().print("|cffff8a80Not saved:|r " .. tostring(err)); return false end
+  A.newText = nil
+  if ns.KeyEditor.Close then ns.KeyEditor.Close() end
+  A.flow("C" .. idx .. " made from your text")
+  return true
+end
 function A.openText(parent, name, label, body)
   if not (name and ns.Rules.isOurs(name)) then return false end
   local d = current(name)
   local ov = Core().cdb.overrides[name]
   local text = (d and d.body) or (ov and ov.text) or body
-  if not text or text == "" then
+  if (not text or text == "") and A.newText == name then text = "" -- a new macro starts empty
+  elseif not text or text == "" then
     Core().print("|cffff8a80" .. tostring(label or name) .. " has no macro text yet – save its spells first.|r")
     return false
   end
@@ -924,6 +990,7 @@ end
 --- Tooltip lines for a key with an override.
 function A.tooltip(GT, c)
   local d = c.d
+  if d and d.edited then GT:AddLine("Kept as you edited it – WoWBoxer doesn't change it (right-click: Let WoWBoxer update it)", 1, 0.6, 0.2, true) end
   if not (d and d.override) then return end
   if d.frozen then GT:AddLine("Edited by you – not updated on level-up", 1, 0.6, 0.2, true)
   else GT:AddLine("Your targeting: " .. O().summary(d.override, O().ctx()), 1, 0.6, 0.2, true) end
@@ -937,6 +1004,58 @@ function A.count()
 end
 
 -- ------------------------------------------------------------------ Reset to default (§5)
+-- ------------------------------------------------------------------ the name of a macro (Rename..., New macro)
+local function nameFrame()
+  if A.nf then return A.nf end
+  local f = modal(UI.frame, 380, 150)
+  f.title = W.text(f, "GameFontNormalLarge", 15, W.GOLD)
+  f.title:SetPoint("TOPLEFT", 16, -14)
+  f.title.wbxCopy = "hint"
+  f.box = W.frame("EditBox", f, "InputBoxTemplate")
+  f.box:SetSize(220, 22)
+  f.box:SetAutoFocus(true)
+  f.box:SetMaxLetters(ns.Rules.NAME_LIMIT)
+  f.box:SetPoint("TOPLEFT", 22, -48)
+  f.note = W.text(f, "GameFontHighlightSmall", nil, W.MUTED)
+  f.note:SetPoint("TOPLEFT", 16, -78)
+  f.note:SetPoint("TOPRIGHT", -16, -78)
+  f.note.wbxCopy = "sentence"
+  local function ok()
+    local done, why = f.onOK(f.box:GetText() or "")
+    if done ~= false then f:Hide() else f.note:SetText("|cffff8a80" .. tostring(why or "Not possible") .. ".|r") end
+  end
+  f.box:SetScript("OnEnterPressed", ok)
+  f.box:SetScript("OnEscapePressed", function() f:Hide() end)
+  f.ok = W.button(f, "OK", 80, 24, ok, "Uses this name.")
+  W.primary(f.ok)
+  f.ok:SetPoint("BOTTOMRIGHT", -12, 12)
+  f.cancel = W.button(f, "Cancel", 70, 24, function() f:Hide() end, "Closes this. Nothing changes.")
+  f.cancel:SetPoint("RIGHT", f.ok, "LEFT", -6, 0)
+  A.nf = f
+  W.dialog(f, "WoWBoxerNameDialog")
+  return f
+end
+--- Ask for a macro name: title, the name in the box, a short note, onOK(name) -> false, why (stays open with the
+--- reason) or anything else (closes).
+function A.askName(title, current, note, onOK)
+  UI.Open()
+  local f = nameFrame()
+  f.title:SetText(title)
+  f.box:SetText(current or "")
+  f.box:HighlightText()
+  f.note:SetText(note or "")
+  f.onOK = onOK
+  f:Show()
+  if f.Raise then f:Raise() end
+  f.box:SetFocus()
+end
+--- Right-click > Rename...: your own name for a WoWBoxer macro in the game.
+function A.rename(name, label)
+  local cur = ns.Macros.userName(name) or ""
+  A.askName("Rename " .. tostring(label or name), cur, "Its name in the game (at most " .. ns.Rules.NAME_LIMIT .. " letters). Empty = " .. name .. ".",
+    function(v) return Core().renameMacro(name, v) end)
+end
+
 local function resetFrame()
   if A.rf then return A.rf end
   local f = modal(UI.frame, 520, 350)

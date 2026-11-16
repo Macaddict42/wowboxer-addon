@@ -252,9 +252,14 @@ end
 local function noAssist(ctx) return { leader = ctx.leader, unit = ctx.unit, wand = ctx.wand, assist = false, no = ctx.no } end
 --- The extra lines WoWBoxer adds that the player did not pick, in the order of the switches.
 E.EXTRA_LINES = { "wand", "autoshot", "startattack", "petattack", "assist" }
---- "/assist <unit>" right after the first line (#showtooltip ...).
+--- "Take the leader's target": take it only when you have no live enemy targeted (none, dead or a friend). A target
+--- change resets every "/castsequence reset=target", so a live enemy is kept.
+function E.assistLine(ctx)
+  return "/assist [noharm][dead] " .. E.units(ctx.unit).main
+end
+--- The assist line right after the first line (#showtooltip ...).
 local function withAssist(body, ctx)
-  local line = "/assist " .. E.units(ctx.unit).main
+  local line = E.assistLine(ctx)
   local i = sfind(body, "\n", 1, true)
   if not i then return line .. "\n" .. body end
   return ssub(body, 1, i) .. line .. "\n" .. ssub(body, i + 1)
@@ -280,7 +285,7 @@ local function buildMacro(s, ctxIn)
   local ctx, name = ctxOf(ctxIn), s.name
   local u = E.units(ctx.unit)
   local title = "#showtooltip " .. name
-  local harm = ctx.leader and "[@mouseover,harm,nodead][harm,nodead]" or ("[@mouseover,harm,nodead][@" .. u.mainTarget .. ",harm,nodead][harm,nodead]")
+  local harm = "[@mouseover,harm,nodead][harm,nodead]" -- (no hidden "[@party1target]": taking a target is a choice)
   local help = ctx.leader and "[@mouseover,help,nodead][help,nodead][@player]" or ("[@mouseover,help,nodead][@" .. u.main .. ",help,nodead][@player]")
   local meleeStart = ctx.leader and "/startattack [harm,nodead]" or ("/startattack " .. harm)
   local meleeCast = ctx.leader and "[harm,nodead]" or harm
@@ -295,7 +300,9 @@ local function buildMacro(s, ctxIn)
   elseif a == "opener" then return title .. "\n/cast " .. meleeCast .. " " .. name .. (ctx.no.startattack and "" or ("\n" .. meleeStart))
   elseif a == "aoe-melee" then return title .. "\n" .. st .. "/cast " .. name
   elseif a == "dual" then
-    return title .. "\n" .. st .. "/cast [@mouseover,harm,nodead][@mouseover,help,nodead]" .. (ctx.leader and "" or ("[@" .. u.mainTarget .. ",harm,nodead]")) .. "[harm,nodead][help,nodead][@player] " .. name
+    return title .. "\n" .. st .. "/cast [@mouseover,harm,nodead][@mouseover,help,nodead][harm,nodead][help,nodead][@player] " .. name
+  elseif a == "dualcast" then -- a caster's heal-or-damage spell (Penance): the same aim, no melee auto attack
+    return title .. "\n/cast [@mouseover,harm,nodead][@mouseover,help,nodead][harm,nodead][help,nodead][@player] " .. name
   elseif a == "ranged" then return title .. "\n/cast " .. harm .. " " .. name
   elseif a == "autoshot" then return title .. "\n" .. pa .. "/cast " .. harm .. " !" .. name
   elseif a == "wand" then return title .. "\n/cast " .. harm .. " !" .. name
@@ -374,9 +381,7 @@ local function aimFor(def, ctx, lvl)
     if ctx.leader then return lvl == 0 and "[@mouseover,help,nodead][help,nodead][@player]" or "[help,nodead][@player]" end
     return lvl < 2 and ("[@mouseover,help,nodead][@" .. u.main .. ",help,nodead][@player]") or ("[@" .. u.main .. ",help,nodead][@player]")
   end
-  if ctx.leader then return lvl < 2 and "[@mouseover,harm,nodead][harm,nodead]" or "[harm,nodead]" end
-  local opts = { "[@mouseover,harm,nodead][@" .. u.mainTarget .. ",harm,nodead][harm,nodead]", "[@mouseover,harm,nodead][@" .. u.mainTarget .. ",harm,nodead]", "[@" .. u.mainTarget .. ",harm,nodead]" }
-  return opts[lvl + 1]
+  return lvl < 2 and "[@mouseover,harm,nodead][harm,nodead]" or "[harm,nodead]"
 end
 E.aimFor = aimFor
 --- body + "/cast <aim> !Shoot" LAST, the aim shortened step by step to fit 255; nil if it never fits.
@@ -442,7 +447,7 @@ local function buildCastSequence(def, t, ctx, has, o)
     local list = slice(names)
     if filler then for _ = 1, nFill do list[#list + 1] = filler.name end end
     local txt = "#showtooltip\n"
-    if ctx.assist and def.aim ~= "help" and not def.noAssist then txt = txt .. "/assist " .. E.units(ctx.unit).main .. "\n" end
+    if ctx.assist and def.aim ~= "help" and not def.noAssist then txt = txt .. E.assistLine(ctx) .. "\n" end
     if def.startattack and not ctx.no.startattack then txt = txt .. "/startattack " .. aim .. "\n" end
     if def.pet and not ctx.no.petattack then txt = txt .. "/petattack " .. aim .. "\n" end
     if #list == 1 then return txt .. "/cast " .. aim .. " " .. list[1] end
@@ -480,7 +485,6 @@ local function buildPriority(def, t, ctx, has)
     local s = pickSpell(o.s, has)
     if s and not contains(spells, s) then spells[#spells + 1] = s; if o.self then self[s] = true end end
   end
-  local u = E.units(ctx.unit)
   local tipName
   for _, s in ipairs(spells) do if s.name == def.tip then tipName = def.tip break end end
   tipName = tipName or (spells[1] and spells[1].name or "Attack")
@@ -488,12 +492,11 @@ local function buildPriority(def, t, ctx, has)
   -- aims at the mouseover first
   local function make(lvl, list)
     local aim
-    if ctx.leader then aim = def.aim == "melee" and "" or "[@mouseover,harm,nodead][harm,nodead] "
-    else aim = lvl == 0 and ("[@" .. u.mainTarget .. ",harm,nodead][harm,nodead] ") or ("[@" .. u.mainTarget .. ",harm,nodead] ") end
+    aim = def.aim == "melee" and "" or (lvl == 0 and "[@mouseover,harm,nodead][harm,nodead] " or "[harm,nodead] ")
     local cond = smatch(aim, "^%s*(.-)%s*$")
     if cond == "" then cond = "[harm,nodead]" end
     local parts = { "#showtooltip " .. tipName }
-    if ctx.assist and def.aim ~= "help" then parts[#parts + 1] = "\n/assist " .. u.main end
+    if ctx.assist and def.aim ~= "help" then parts[#parts + 1] = "\n" .. E.assistLine(ctx) end
     if def.aim == "melee" and not ctx.no.startattack then parts[#parts + 1] = "\n/startattack " .. cond end
     if def.pet and not ctx.no.petattack then parts[#parts + 1] = "\n/petattack " .. cond end
     for _, s in ipairs(list) do parts[#parts + 1] = "\n/cast " .. (self[s] and "[combat] " or aim) .. s.name end
@@ -501,7 +504,7 @@ local function buildPriority(def, t, ctx, has)
     return tconcat(parts)
   end
   if #spells == 0 then
-    local c0 = ctx.leader and "[harm,nodead]" or ("[@" .. u.mainTarget .. ",harm,nodead][harm,nodead]")
+    local c0 = "[harm,nodead]"
     if def.autoshot then
       return { id = def.id, label = def.label, base = "priority", kind = "engage", spells = {},
         macro = "#showtooltip Auto Shot\n" .. (ctx.no.petattack and "" or ("/petattack " .. c0 .. "\n")) .. "/cast " .. c0 .. " !Auto Shot", compact = false, tooLong = false }
@@ -588,7 +591,7 @@ function E.buildCustom(cls, c, ctxIn, has, opts)
     local function make(lvl, list)
       local a = aimFor(def, ctx, lvl)
       local txt = "#showtooltip\n"
-      if assist then txt = txt .. "/assist " .. E.units(ctx.unit).main .. "\n" end
+      if assist then txt = txt .. E.assistLine(ctx) .. "\n" end
       if melee then txt = txt .. "/startattack " .. a .. "\n" end
       if pet then txt = txt .. "/petattack " .. a .. "\n" end
       local lines = {}

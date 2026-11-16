@@ -1,6 +1,9 @@
 -- "Take the leader's target" (owner bug 9 Nov 2026: the wand filler shoots once and stops on followers). Auto-repeat
 -- (Shoot, Auto Shot) only keeps going on your OWN target and combo points sit on your own target, so a follower's damage
--- keys start with /assist <the leader's unit>. On by default for followers, never for the leader; off = today's macros.
+-- keys start with "/assist [noharm][dead] <the leader's unit>": the leader's target is taken only
+-- when you have no live enemy (a target change resets castsequence reset=target). Damage keys never aim at the leader's
+-- target by a party slot ([@party1target]) any more: mouseover, then your own target. On by default for followers,
+-- never for the leader, switchable per character and per macro.
 -- The wand line stays last; to fit 255 the wand line goes first, then /assist. Every game, every class.
 local dir = (arg[0]:match("^(.*)/[^/]+$") or ".")
 local H = dofile(dir .. "/harness.lua")
@@ -38,11 +41,11 @@ for _, game in ipairs({ { "forever", 16001, "camelot" }, { "era", 11509 }, { "tb
           local A, B = bodies(on, L), bodies(off, L)
           for key, body in pairs(A) do
             H.ok(#body <= 255, who .. key .. " fits 255 (" .. #body .. ")")
-            local assist = body:match("\n/assist ([^\n]+)")
+            local assist = body:match("\n/assist %[noharm%]%[dead%] ([^\n]+)")
             if assist then
               H.eq(assist, unit, who .. key .. ": /assist the leader's unit")
               H.ok(body:find("^#showtooltip[^\n]*\n/assist ") ~= nil, who .. key .. ": /assist right after #showtooltip")
-              -- with the line taken out, the rest is today's key – or, for the wand, the same with the own-target aim
+              -- with the lines taken out, the rest is today's key – or, for the wand, the same with the own-target aim
               local without = body:gsub("\n/assist [^\n]+", "", 1)
               local today = B[key]
               if today and without ~= today and key ~= "Wand" then
@@ -65,7 +68,7 @@ for _, game in ipairs({ { "forever", 16001, "camelot" }, { "era", 11509 }, { "tb
               H.ok(not d.body:find("/assist", 1, true), who .. d.key .. " (" .. d.spell.category .. "): no /assist")
             end
             if d.spell and E.assistsFirst(d.spell, K.memberCtx(on)) and d.body ~= "" then
-              H.ok(d.body:find("\n/assist " .. unit, 1, true) ~= nil or #B[d.key] > 230, who .. d.key .. " (" .. d.label .. "): damage key assists")
+              H.ok(d.body:find("\n/assist [noharm][dead] " .. unit, 1, true) ~= nil or #B[d.key] > 230, who .. d.key .. " (" .. d.label .. "): damage key assists")
             end
           end
         end
@@ -75,33 +78,33 @@ for _, game in ipairs({ { "forever", 16001, "camelot" }, { "era", 11509 }, { "tb
 
   -- the owner's case: a priest follower's Smite takes the target, then falls back to a wand that keeps shooting
   local d = byKey(M.desired(member({ cls = "priest", role = "healer", level = 20 }), 20, {}))
-  H.eq(d.K1.body, "#showtooltip Smite\n/assist party1\n/cast [@mouseover,harm,nodead][@party1target,harm,nodead][harm,nodead] Smite\n/cast [harm,nodead] !Shoot",
+  H.eq(d.K1.body, "#showtooltip Smite\n/assist [noharm][dead] party1\n/cast [@mouseover,harm,nodead][harm,nodead] Smite\n/cast [harm,nodead] !Shoot",
     tag .. "priest follower Smite")
-  H.eq(d.Wand.body, "#showtooltip Shoot\n/assist party1\n/cast [harm,nodead] !Shoot", tag .. "the Wand key takes the target first")
+  H.eq(d.Wand.body, "#showtooltip Shoot\n/assist [noharm][dead] party1\n/cleartarget [help]\n/cast [harm,nodead] !Shoot", tag .. "the Wand key takes the target first (never a friendly one)")
   -- Rogue: combo builders and finishers on the own target
   local r = byKey(M.desired(member({ cls = "rogue", role = "melee", level = 20 }), 20, {}))
   local any = false
-  for _, x in pairs(r) do if x.body:find("Sinister Strike", 1, true) then any = true; H.ok(x.body:find("\n/assist party1\n", 1, true) ~= nil, tag .. "rogue " .. x.key .. " assists") end end
+  for _, x in pairs(r) do if x.body:find("Sinister Strike", 1, true) then any = true; H.ok(x.body:find("\n/assist [noharm][dead] party1\n", 1, true) ~= nil, tag .. "rogue " .. x.key .. " assists") end end
   H.ok(any, tag .. "rogue has Sinister Strike keys")
   -- Follow (line): the macros take the LEADER's target (the unit the damage keys aim through), not the one ahead
   local lm = member({ cls = "mage", role = "ranged", level = 20, unit = "party2", lineUnit = "party3" })
   local lb = bodies(lm, 20)
   H.ok(lb.Follow and lb.Follow:find("/follow party3", 1, true), tag .. "line: Follow follows the one ahead")
   for key, body in pairs(lb) do
-    local a = body:match("\n/assist ([^\n]+)")
+    local a = body:match("\n/assist %[noharm%]%[dead%] ([^\n]+)")
     if a then H.eq(a, "party2", tag .. "line: " .. key .. " assists the leader (party2)") end
   end
 
   -- 255: a key that does not fit with /assist is today's key (the wand line went first)
-  local fake = { name = string.rep("X", 160), action = "ranged", category = "Damage" }
+  local fake = { name = string.rep("X", 170), action = "ranged", category = "Damage" } -- (the shorter aim since 1.3: longer names)
   local ctx = { leader = false, unit = "party4", wand = true, assist = true }
   local long = E.makeMacro(fake, ctx)
   H.ok(#long <= 255, tag .. "a long spell still fits")
   local plain = E.makeMacro(fake, { leader = false, unit = "party4", wand = true })
   H.ok(not long:find("/assist", 1, true), tag .. "too long with /assist: no /assist"); H.eq(long, plain, tag .. "too long with /assist: today's key")
-  local mid = { name = string.rep("Y", 140), action = "ranged", category = "Damage" }
+  local mid = { name = string.rep("Y", 150), action = "ranged", category = "Damage" }
   local m1 = E.makeMacro(mid, ctx)
-  H.ok(m1:find("/assist party4", 1, true) and not m1:find("Shoot", 1, true), tag .. "the wand line goes before /assist: " .. #m1)
+  H.ok(m1:find("/assist [noharm][dead] party4", 1, true) and not m1:find("Shoot", 1, true), tag .. "the wand line goes before /assist: " .. #m1)
 
   -- share string: the switch travels only when off
   local sq = S.newSquad({ name = "T", members = { { name = "L", cls = "mage", leader = true }, { name = "F", cls = "rogue", assist = false }, { name = "G", cls = "priest" } } })

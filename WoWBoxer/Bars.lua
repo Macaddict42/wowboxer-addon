@@ -17,11 +17,17 @@ B.BARS = {
   { first = 25, label = "Right Bar", short = "R1" },
   { first = 37, label = "Right Bar 2", short = "R2" },
 }
+-- Action Bars 6-8 (Edit Mode clients): only where the client has them
+for _, x in ipairs({ { 145, "MultiBar5" }, { 157, "MultiBar6" }, { 169, "MultiBar7" } }) do
+  if G[x[2]] then B.BARS[#B.BARS + 1] = { first = x[1], label = "Action Bar " .. (x[1] == 145 and 6 or x[1] == 157 and 7 or 8), short = "Bar " .. (x[1] == 145 and 6 or x[1] == 157 and 7 or 8) } end
+end
+--- The highest action slot WoWBoxer looks at (180 with bars 6-8, else 120).
+B.MAX_SLOT = (G.MultiBar5 and 180) or 120
 -- The names the running client uses in its own options (#help 10 Nov: players on Forever expect "Action Bar 1–8"):
 -- clients with Edit Mode number the bars (Action Bar 1 = main, 2 = bottom left, 3 = bottom right, 4 = right,
 -- 5 = right 2); the classic options use the client's own SHOW_MULTIBAR1–4_TEXT strings when it has them, else the
 -- names above. A capability probe, never the project ID. [AFKLAR: the exact labels of the Era 1.15 and TBC options]
-B.NUMBER = { [1] = 1, [61] = 2, [49] = 3, [25] = 4, [37] = 5 }
+B.NUMBER = { [1] = 1, [61] = 2, [49] = 3, [25] = 4, [37] = 5, [145] = 6, [157] = 7, [169] = 8 }
 local CLASSIC_STRING = { [61] = "SHOW_MULTIBAR1_TEXT", [49] = "SHOW_MULTIBAR2_TEXT", [25] = "SHOW_MULTIBAR3_TEXT", [37] = "SHOW_MULTIBAR4_TEXT" }
 function B.editMode() return G.EditModeManagerFrame ~= nil or (G.C_EditMode ~= nil and G.C_EditMode.GetLayouts ~= nil) end
 --- {label, short} of the bar whose first slot is `first`, as this client names it.
@@ -68,6 +74,18 @@ function B.layout(desired, cdb, info)
   for _, d in ipairs(desired) do
     local slot = cdb.slots[d.name]
     if slot and not taken[slot] then out[d.name] = take(slot) end
+  end
+  -- a macro you took off goes back where it was: the button that has its keybind now, else its last button (if empty)
+  if info and type(cdb.lastPlace) == "table" then
+    local KB = ns.Binds
+    for _, d in ipairs(desired) do
+      local m = not out[d.name] and cdb.lastPlace[d.name]
+      if m then
+        local slot = m.key and KB and KB.slotForCommand and G.GetBindingAction and KB.slotForCommand(G.GetBindingAction(m.key)) or nil
+        if not (slot and not taken[slot] and info(slot) == nil) then slot = m.slot end
+        if slot and not taken[slot] and info(slot) == nil then out[d.name] = take(slot) end
+      end
+    end
   end
   local held = {}
   if info then
@@ -196,7 +214,7 @@ function B.watch()
   local c = charDB()
   if not c then return end
   c.barSeen = c.barSeen or {}
-  for slot = 1, 120 do
+  for slot = 1, B.MAX_SLOT do
     local now = B.content(slot)
     local ours = now.kind == "macro" and R.isOurs(now.name)
     if ours then

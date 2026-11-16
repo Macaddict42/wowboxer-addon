@@ -44,7 +44,7 @@ function CL.items()
       c.noslot > 0 and (c.noslot .. (c.noslot == 1 and " macro has" or " macros have") .. " no free macro slot: delete a macro in /macro, or leave a macro out (right-click it in the book).") or (ctx.macros.free .. " character macro slots free."))
     local b = ctx.bars.counts
     add(b.occupied + b.empty + b.ours + b.missing == 0, b.placed .. " macros on bars",
-      b.occupied > 0 and (b.occupied .. (b.occupied == 1 and " button holds" or " buttons hold") .. " something else: drag those macros yourself, or tick Replace above.") or "My macros: press Place all.")
+      b.occupied > 0 and (b.occupied .. (b.occupied == 1 and " button holds" or " buttons hold") .. " something else: drag those macros yourself, or tick Replace above.") or "Macros: press Place all.")
     if not m.leader then
       -- Follow (line): display only; the Fix changes WoWBoxer data, the macro follows after Update keys
       local u, ahead, how = ns.Squad.lineFor(s, m)

@@ -126,11 +126,11 @@ do
   H.eq(ctx.member.name, "Wowtwo", "found by name")
   local byKey = {}
   for _, d in ipairs(ctx.desired) do byKey[d.key] = d end
-  H.eq(byKey.Follow and byKey.Follow.body, "/follow party1", "follow helper")
-  H.eq(byKey.Assist and byKey.Assist.body, "/assist party1", "assist helper")
+  H.eq(byKey.Follow and byKey.Follow.body, "/follow Dorin", "follow helper: the leader by name (party1 here)")
+  H.eq(byKey.Assist and byKey.Assist.body, "/assist Dorin", "assist helper: the leader by name")
   H.ok(byKey.S1 and byKey.S1.body:find("castsequence"), "damage sequence S1")
   H.ok(byKey.S2 and byKey.S2.body:find("reset=combat/12"), "heal sequence S2")
-  H.ok(byKey.K1 and byKey.K1.body:find("party1"), "kit follows party1")
+  H.ok(byKey.K1 and byKey.K1.body:find("Dorin", 1, true) and not byKey.K1.body:find("party1", 1, true), "kit uses the leader's name, not party1")
   -- spells not in the spellbook stay out of sequences
   W.known["Mind Blast"] = nil
   W.fire("SPELLS_CHANGED") -- the client fires this whenever the spellbook changes (the addon caches the scan)
