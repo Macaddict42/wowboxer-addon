@@ -495,7 +495,7 @@ function Core.nameOwnMacros()
   end
 end
 --- A name for a new own macro without asking: "My macro" (the editor's default) is never used, and a name that is
---- taken gets a number ("Dots 2"); if nothing is free it keeps its WBX name.
+--- taken gets a number ("Bolt 2"); if nothing is free it keeps its WBX name.
 function Core.autoName(key, want)
   want = type(want) == "string" and want:match("^%s*(.-)%s*$") or ""
   if want == "" or want == "My macro" or type(Core.cdb) ~= "table" then return false end
