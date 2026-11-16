@@ -102,9 +102,19 @@ do
     H.ok(cell ~= nil, "its card on the Macros page")
     if cell then
       cell:Click("RightButton")
-      local has = false
-      for _, r in ipairs(ns.Widgets.menuFrame.rows) do if r:IsShown() and r.label._text == "Rename…" then has = true end end
-      H.ok(has, "Rename… in its menu")
+      local labels, removeRow = {}, nil
+      for _, r in ipairs(ns.Widgets.menuFrame.rows) do
+        if r:IsShown() then labels[#labels + 1] = r.label._text; if r.label._text == "Remove" then removeRow = r end end
+      end
+      H.ok(table.concat(labels, ","):find("Rename…", 1, true) ~= nil, "Rename… in its menu")
+      H.ok(table.concat(labels, ","):find("Copy…", 1, true) ~= nil, "Copy… in its menu")
+      H.ok(removeRow ~= nil, "Remove in its menu: " .. table.concat(labels, ", "))
+      -- Remove: off the list and off its buttons
+      W.combat = false; W.env.PickupSpell(id); W.env.PlaceAction(41); W.env.ClearCursor()
+      H.eq((ns.Compat.actionInfo(41) or {}).kind, "spell", "the spell is on button 41")
+      if removeRow then removeRow:Click() end
+      H.eq(ns.Compat.actionInfo(41), nil, "Remove: its button is empty")
+      H.eq(items(ns)[plain].status, "skipped", "Remove: WoWBoxer's own key shows as Removed (Use again brings it back)")
     end
   end
 end

@@ -399,16 +399,31 @@ function Core.plainToMacro(name, spell)
   if C.inCombat() or type(spell) ~= "table" then return end
   local idx = M.findIndex(name)
   if not idx then return end
-  local ids = {}
-  for _, r in ipairs(spell.ranks or {}) do if r.id then ids[r.id] = true end end
-  if spell.id and tonumber(spell.id) then ids[tonumber(spell.id)] = true end
   local n = 0
-  for slot = 1, B.MAX_SLOT do
-    local a = C.actionInfo(slot)
-    if a and a.kind == "spell" and (ids[a.id] or C.spellName(a.id) == spell.name) then B.placeMacro(idx, slot, "renamed spell"); n = n + 1 end
-  end
+  for _, slot in ipairs(Core.spellSlots(spell)) do B.placeMacro(idx, slot, "renamed spell"); n = n + 1 end
   if n > 0 then Core.log("info", name .. " is a macro now: on " .. n .. " button(s) that held " .. tostring(spell.name)) end
   Core.changed()
+end
+--- The action buttons that hold `spell` itself (any of its ranks, or its name).
+function Core.spellSlots(spell)
+  local ids, out = {}, {}
+  for _, r in ipairs(spell.ranks or {}) do if r.id then ids[r.id] = true end end
+  if spell.id and tonumber(spell.id) then ids[tonumber(spell.id)] = true end
+  for slot = 1, B.MAX_SLOT do
+    local a = C.actionInfo(slot)
+    if a and a.kind == "spell" and (ids[a.id] or C.spellName(a.id) == spell.name) then out[#out + 1] = slot end
+  end
+  return out
+end
+--- Remove for a key that is the spell itself: the buttons holding that spell become empty (out of combat).
+function Core.clearSpellButtons(spell)
+  if C.inCombat() or type(spell) ~= "table" then return 0 end
+  local n = 0
+  for _, slot in ipairs(Core.spellSlots(spell)) do
+    if B.clearSlot(slot, "Remove " .. tostring(spell.name)) then n = n + 1 end
+  end
+  if n > 0 then Core.log("info", "removed " .. tostring(spell.name) .. " from " .. n .. " button(s)"); Core.scanBars(); Core.changed() end
+  return n
 end
 --- Remove WBX macros now (a click: Remove, an unticked squad key): the macro and its slot go at once (from your bars
 --- too); what stops WoWBoxer making it again is the caller's (skip, untick, extras list).

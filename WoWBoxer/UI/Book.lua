@@ -698,9 +698,20 @@ function Book.menuFor(p, c)
   end
   items[#items + 1] = { "Pick up", function() pickupCell(c) end }
   items[#items + 1] = { "Set keybind…", function() p.capture:Start(c.name, c.label) end }
-  -- squad macros have their tick for this; a plain spell has no macro to remove
+  -- every macro can be removed (the same menu for all): a squad macro's Remove is unticking it
   local squadKey = c.squadKey ~= nil or (c.item and c.item.group == "helper")
-  if c.item and not squadKey and c.item.status ~= "spell" then
+  if c.item and squadKey then
+    local key = c.squadKey or c.item.key
+    items[#items + 1] = { "Remove", function() Book.setSquadKey(key, false) end,
+      "Deletes this squad macro (also from your bars). Tick it on the Squad page to get it back." }
+  elseif c.item and c.item.status == "spell" then
+    -- the spell itself on your bar: off the list, and off the buttons that hold it (like a removed macro)
+    items[#items + 1] = { "Remove", function()
+      local spell = c.d and c.d.spell
+      removeCell(c)
+      if spell and not ns.Compat.inCombat() then Core().clearSpellButtons(spell) end
+    end, "Takes it off your bars and WoWBoxer stops offering it." }
+  elseif c.item and not squadKey then
     if c.item.status == "skipped" then
       items[#items + 1] = { "Use again", function()
         setSkip(c.name, false)
@@ -740,7 +751,7 @@ function Book.menuFor(p, c)
   end
 
   if ns.Advanced then for _, it in ipairs(ns.Advanced.menuItems(p, c)) do items[#items + 1] = it end end
-  if c.d and c.d.body and c.d.body ~= "" then items[#items + 1] = { "Copy…", function() Book.copyKey(c) end } end
+  if c.d and ((c.d.body and c.d.body ~= "") or (c.d.plain and c.d.spell)) then items[#items + 1] = { "Copy…", function() Book.copyKey(c) end } end
   if directBound(c) then items[#items + 1] = { "Remove keybind", function() Core().unbindKey(c.name) end } end
   return items
 end
@@ -750,7 +761,9 @@ function Book.copyKey(c)
   local _, m = Core().me()
   local i = c.name and tonumber(c.name:match("^WBX C(%d)$"))
   local own = i and m and m.customSeq and m.customSeq[i]
-  ns.CopyBox.ShowCopy("Copy \"" .. (c.label or "key") .. "\"", c.d.body, own and ns.Share.encodeKey(own, m.cls) or nil)
+  local body = c.d.body
+  if (body == nil or body == "") and c.d.plain and c.d.spell then body = "#showtooltip " .. c.d.spell.name .. "\n/cast " .. c.d.spell.name end
+  ns.CopyBox.ShowCopy("Copy \"" .. (c.label or "key") .. "\"", body, own and ns.Share.encodeKey(own, m.cls) or nil)
 end
 
 --- Tooltip of a book button: name, status word, one sentence, steps, macro text, how to use it.

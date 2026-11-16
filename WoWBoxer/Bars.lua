@@ -240,6 +240,14 @@ function B.placeMacro(idx, slot, source)
   log("bar " .. slot .. " <- macro #" .. tostring(idx) .. (ok and "" or (" failed: " .. tostring(err))) .. " (source=" .. tostring(source) .. ")")
   return ok, err
 end
+--- Empty action button `slot` (what it held is not kept on the cursor). Out of combat only.
+function B.clearSlot(slot, source)
+  B.snapshot(slot)
+  local ok, err = pcall(function() PickupAction(slot); ClearCursor() end)
+  if not ok then pcall(ClearCursor) end
+  log("bar " .. slot .. " emptied" .. (ok and "" or (" failed: " .. tostring(err))) .. " (source=" .. tostring(source) .. ")")
+  return ok, err
+end
 --- The client's spell pickup (Forever: C_Spell.PickupSpell; Classic Era: PickupSpell), or nil.
 local function pickupSpellFn()
   local CS = G.C_Spell

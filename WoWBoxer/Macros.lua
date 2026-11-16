@@ -603,7 +603,9 @@ function M.plan(desired, skip, tag)
     if not cur and accOwn[d.name] then cur, inAcc = accOwn[d.name], true end
     local cdb = ns.Core and ns.Core.cdb
     local overwrite = cdb and type(cdb.overwrite) == "table" and cdb.overwrite or {}
-    if d.plain then
+    if d.plain and skip[d.name] then
+      it.status, it.plain = "skipped", true -- a spell you removed (Use again brings it back)
+    elseif d.plain then
       it.status, it.plain = "spell", true -- no macro: an old WBX macro of this name is offered for removal (unused)
     else
       -- a removed ("skipped") macro is not wanted any more: its slot shows up under "Remove unused"

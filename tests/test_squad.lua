@@ -228,6 +228,21 @@ do
   ns.Book.setSquadKey("FollowMember", false)
   H.eq(key("WBX FollowMember"), nil, "unticked: not made")
   ns.Book.setSquadKey("FollowMember", true)
+  -- every macro has Remove in its menu: for a squad macro it is the same as unticking it
+  ns.UI.Open("keys")
+  local cell
+  for _, b in ipairs(ns.UI.panels.keys.cells) do if b:IsShown() and b.cell and b.cell.name == "WBX FollowMember" then cell = b end end
+  H.ok(cell ~= nil, "its card on the Macros page")
+  if cell then
+    cell:Click("RightButton")
+    local removeRow
+    for _, r in ipairs(ns.Widgets.menuFrame.rows) do if r:IsShown() and r.label._text == "Remove" then removeRow = r end end
+    H.ok(removeRow ~= nil, "Remove in a squad macro's menu")
+    if removeRow then removeRow:Click() end
+    H.eq(Core.cdb.squadKeys.FollowMember, false, "Remove unticks it")
+    H.eq(key("WBX FollowMember"), nil, "and it is not made")
+  end
+  ns.Book.setSquadKey("FollowMember", true)
   s.members[3] = { id = "m3", name = "Bo", cls = "mage", race = "human", role = "ranged", unit = "party1" }
   H.eq(key("WBX FollowMember"), nil, "a squad of three: no Follow member (whom would it follow?)")
   H.eq(errors(ns), "", "no errors (follow member)")
