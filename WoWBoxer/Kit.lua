@@ -451,15 +451,15 @@ function K.helpers(m, keyLines)
   local u = E.units(m.unit)
   local out = {}
   if not m.leader then
-    out[#out + 1] = { key = "Follow", label = "Follow the leader", body = "/follow " .. u.main }
-    out[#out + 1] = { key = "Assist", label = "Take the leader's target", body = "/assist " .. u.main }
+    out[#out + 1] = { key = "Follow", label = "Follow leader", body = "/follow " .. u.main }
+    out[#out + 1] = { key = "Assist", label = "Assist leader", body = "/assist " .. u.main }
     if m.unit == "focus" then
       out[#out + 1] = { key = "Focus", label = "Set your target (the leader) as focus", body = "/focus [@target,help,nodead]" }
     end
   end
   if m.cls == "warlock" or m.cls == "hunter" then
     -- no "Send pet to the same target" (owner, 9 Nov 2026): every damage macro of a pet class already has /petattack
-    out[#out + 1] = { key = "PetBack", label = "Pet passive + follow", body = "/petpassive\n/petfollow" }
+    out[#out + 1] = { key = "PetBack", label = "Pet back", body = "/petpassive\n/petfollow" }
   end
   if E.WAND_CLASSES[m.cls] then
     local chain = "[@mouseover,harm,nodead][harm,nodead]"
@@ -470,7 +470,7 @@ function K.helpers(m, keyLines)
     if per and per.assist ~= nil then takes = per.assist and not m.leader end -- the Wand macro's own choice
     local body = takes and ("#showtooltip Shoot\n" .. E.assistLine(K.memberCtx(m)) .. "\n/cleartarget [help]\n/cast [harm,nodead] !Shoot")
       or ("#showtooltip Shoot\n/cast " .. chain .. " !Shoot")
-    out[#out + 1] = { key = "Wand", label = "Shoot your wand at " .. (takes and "the leader's target" or "your target"), body = body }
+    out[#out + 1] = { key = "Wand", label = "Shoot wand", body = body }
   end
   return out
 end

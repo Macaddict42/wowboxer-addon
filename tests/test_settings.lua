@@ -64,7 +64,15 @@ rip.Core.db.settings.advanced = true
 rip.Core.changed()
 Wrip.flush()
 local push = card(rip, "push")
-H.ok(push ~= nil, "after a change: 'Use the same on your other characters?'")
+H.ok(push ~= nil, "after a change: a card asks whether to send it")
+H.eq(push and push.text, "You changed Advanced mode (now Advanced). Send this to your other characters?", "the card says what changed")
+-- a change that ends where it started: no card
+do
+  local q = #rip.Sync.queue
+  local before = rip.Settings.base
+  rip.Settings.ask(rip.Settings.changes(before, before))
+  H.eq(#rip.Sync.queue, q, "nothing changed: no card")
+end
 rip.Core.changed(); Wrip.flush()
 local pushes = 0
 for _, q in ipairs(rip.Sync.queue) do if q.kind == "push" then pushes = pushes + 1 end end
@@ -72,6 +80,9 @@ H.eq(pushes, 1, "one card, not one per change")
 -- Not now: nothing is sent
 Wrip.sent = {}
 while rip.Sync.queue[1] and rip.Sync.queue[1].kind ~= "push" do rip.Sync.dismiss() end
+local function label(b) return b._text or (b.label and b.label._text) or (b.GetText and b:GetText()) end
+H.eq(label(rip.Sync.frame.no), "Don't send", "the buttons answer the question: Send / Don't send")
+H.eq(label(rip.Sync.frame.go), "Send", "and Send")
 rip.Sync.accept()   -- Send
 for _ = 1, 5 do Wrip.flush() end
 H.ok(#Wrip.sent > 0, "Send: the settings go to the party (" .. #Wrip.sent .. " message(s))")

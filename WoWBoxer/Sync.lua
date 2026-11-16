@@ -167,7 +167,8 @@ function SY.show()
     goTip = "Uses " .. x.from .. "'s settings on this character too (settings are per WoW account).\n" .. table.concat(lines, "\n")
   elseif x.kind == "push" then
     text, go = x.text, "Send"
-    goTip = "Sends your WoWBoxer settings (mode, Automation, Accept from, window and panel options) to your squad in the party. Each character asks before it uses them. Settings are per WoW account, so each of your accounts keeps its own until then."
+    goTip = "Sends your WoWBoxer settings to your squad in the party: " .. table.concat(x.changes or {}, ", ") ..
+      ". Each character shows what would change and asks before it uses them."
   elseif x.kind == "guide" then
     text, go, goTip = x.text, "Open guide", "Opens the 5-step squad guide on the Squad page."
   else
@@ -176,7 +177,7 @@ function SY.show()
   o.goTip = goTip
   o.text:SetText(text)
   ns.Widgets.setLabel(o.go, go)
-  ns.Widgets.setLabel(o.no, (x.kind == "session" or x.kind == "guide") and "Close" or x.kind == "push" and "Not now" or "Ignore")
+  ns.Widgets.setLabel(o.no, (x.kind == "session" or x.kind == "guide") and "Close" or x.kind == "push" and "Don't send" or "Ignore")
   local maxW = math.min(460, (UIParent:GetWidth() or 800) * 0.9)
   local w = math.max(300, o.go:GetWidth() + o.no:GetWidth() + 26, math.min(maxW, ns.Widgets.measure(text, "GameFontHighlightSmall") + 24))
   o:SetWidth(w)

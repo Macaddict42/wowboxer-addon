@@ -203,6 +203,21 @@ function ST.received(text, sender)
   ns.Sync.offer({ kind = "settings", from = who.name, t = t, n = #d, text = table.concat(words, ", "), diff = d })
 end
 
+--- What changed between two settings texts, in words: {"Advanced mode (now Advanced)", "Window size (now 1.1)"}.
+function ST.changes(fromText, toText)
+  local a, b = ST.decode(fromText or "") or {}, ST.decode(toText or "") or {}
+  local out = {}
+  for _, it in ipairs(ST.ITEMS) do
+    local k = it[1]
+    if (a[k] or "") ~= (b[k] or "") then
+      local show = it[5] or function(x) return x == "1" and "on" or x == "0" and "off" or x end
+      local ok, word = pcall(show, b[k] or "")
+      out[#out + 1] = it[2] .. ((ok and word and word ~= "") and (" (now " .. tostring(word) .. ")") or "")
+    end
+  end
+  return out
+end
+
 -- ------------------------------------------------------------------ the question after a change
 ST.DELAY = 2     -- seconds after the last change
 ST.base = nil    -- my settings when they were last offered, taken or loaded
@@ -224,14 +239,19 @@ function ST.check()
     if now() - (ST.changedAt or 0) < ST.DELAY - 0.05 and G.C_Timer and G.C_Timer.After then
       ST.pending = true; G.C_Timer.After(ST.DELAY, fire); return
     end
+    local old = ST.base
     ST.base = cur
-    ST.ask()
+    ST.ask(ST.changes(old, cur))
   end
   if G.C_Timer and G.C_Timer.After then G.C_Timer.After(ST.DELAY, fire) else fire() end
 end
-function ST.ask()
+--- The card after a change: what changed, and whether to send it to the other characters (Send / Don't send).
+function ST.ask(changes)
   if not (ns.Team.active() and ns.Sync) then return false end
-  ns.Sync.offer({ kind = "push", from = "", text = "You changed WoWBoxer settings. Use the same on your other characters?" })
+  changes = changes or {}
+  if #changes == 0 then return false end
+  ns.Sync.offer({ kind = "push", from = "", changes = changes,
+    text = "You changed " .. table.concat(changes, ", ") .. ". Send this to your other characters?" })
   return true
 end
 

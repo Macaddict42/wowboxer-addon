@@ -40,7 +40,7 @@ function Book.kindName(it)
   return k
 end
 --- Short helper names (the spec: no truncated names).
-Book.HELPER_NAME = { Follow = "Follow (line)", FollowLead = "Follow leader", Assist = "Assist", Focus = "Focus", PetBack = "Pet back", Wand = "Wand", Invite = "Invite squad",
+Book.HELPER_NAME = { Follow = "Follow (line)", FollowLead = "Follow leader", Assist = "Assist", Focus = "Focus", PetBack = "Pet back", Wand = "Shoot wand", Invite = "Invite squad",
   Invite2 = "Invite squad 2", Target = "Target leader" }
 function Book.shortLabel(it)
   local own = it.name and ns.Macros.userName(it.name)

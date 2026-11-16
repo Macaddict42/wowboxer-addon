@@ -85,12 +85,12 @@ function M.squadKeys(m, opts)
   for _, h in ipairs(K.helpers(m, opts.keyLines)) do
     if h.key == "Follow" then
       if M.squadKeyOn(m, "Follow", choices) then
-        out[#out + 1] = { key = "Follow", label = "Follow the one ahead in the line", body = "/follow " .. (opts.lineUnit or m.lineUnit or u.main) }
+        out[#out + 1] = { key = "Follow", label = "Follow (line)", body = "/follow " .. (opts.lineUnit or m.lineUnit or u.main) }
       end
-      if M.squadKeyOn(m, "FollowLead", choices) then out[#out + 1] = { key = "FollowLead", label = "Follow the leader", body = h.body } end
+      if M.squadKeyOn(m, "FollowLead", choices) then out[#out + 1] = { key = "FollowLead", label = "Follow leader", body = h.body } end
     elseif M.squadKeyOn(m, h.key, choices) then out[#out + 1] = h end
     if h.key == "Assist" and M.squadKeyOn(m, "Target", choices) then
-      out[#out + 1] = { key = "Target", label = "Target the leader", body = "/target " .. u.main }
+      out[#out + 1] = { key = "Target", label = "Target leader", body = "/target " .. u.main }
     end
   end
   return out
