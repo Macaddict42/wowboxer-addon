@@ -128,7 +128,8 @@ function Book.helperShort(key, mem)
     Assist = "Takes " .. L .. "'s target.", Focus = "Sets your target as focus.",
     PetBack = "Sets your pet passive and makes it follow you.",
     Wand = "Shoots your wand at " .. ((mem and mem.leader) and "your target" or (L .. "'s target")) .. " and keeps shooting.",
-    Invite = "Invites the others in your squad.", Invite2 = "Invites the rest of your squad.", Target = "Targets " .. L .. "." }
+    Invite = "Invites the others in your squad.", Invite2 = "Invites the rest of your squad.", Target = "Targets " .. L .. ".",
+    FollowMember = "Follows " .. (((ns.Macros.onlyOther(mem, s) or {}).name) or "the other member") .. " (your squad of two)." }
   return T[key] or "A squad macro."
 end
 --- The longer helper text for tooltips: what it does and why WoWBoxer made it.

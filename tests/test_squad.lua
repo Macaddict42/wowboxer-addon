@@ -208,4 +208,29 @@ do
   H.eq(errors(ns), "", "no errors (squad keys)")
 end
 
+-- the leader of a squad of two gets "Follow <member>" (ticked by default); with three or more, nothing
+do
+  local W, ns = boot({ name = "Dorin", class = "PALADIN", level = 10, party = { party1 = "Mira" },
+    partyInfo = { party1 = { class = "PRIEST", race = "Human", level = 10 } } })
+  local Core, S = ns.Core, ns.State
+  local s = S.newSquad({ name = "Duo", members = {
+    { name = "Dorin", cls = "paladin", race = "human", role = "tank", leader = true },
+    { name = "Mira", cls = "priest", race = "human", role = "healer", unit = "party1" } } })
+  Core.db.squads = { s }; Core.db.active = s.id
+  local function key(name) for _, d in ipairs(Core.compute().desired) do if d.name == name then return d end end end
+  local fm = key("WBX FollowMember")
+  H.ok(fm ~= nil, "a leader of two: Follow member made")
+  H.eq(fm and fm.body, "/follow Mira", "it follows the other member by name")
+  H.eq(fm and fm.label, "Follow Mira", "labelled with their name")
+  local tick
+  for _, k in ipairs(ns.Macros.squadKeyList(select(2, Core.me()), Core.cdb.squadKeys, s)) do if k.key == "FollowMember" then tick = k end end
+  H.ok(tick and tick.on and tick.label == "Follow Mira", "a tick on the Squad page, on by default")
+  ns.Book.setSquadKey("FollowMember", false)
+  H.eq(key("WBX FollowMember"), nil, "unticked: not made")
+  ns.Book.setSquadKey("FollowMember", true)
+  s.members[3] = { id = "m3", name = "Bo", cls = "mage", race = "human", role = "ranged", unit = "party1" }
+  H.eq(key("WBX FollowMember"), nil, "a squad of three: no Follow member (whom would it follow?)")
+  H.eq(errors(ns), "", "no errors (follow member)")
+end
+
 os.exit(H.report("squad") and 0 or 1)
