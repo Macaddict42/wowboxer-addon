@@ -7,13 +7,16 @@ on. A second key keeps the old behaviour where everyone follows the leader. Both
 
 | Key | Macro name | Label in the book | Body |
 |---|---|---|---|
-| `Follow` (main bar slot 11, as today) | `WBX Follow` | **Follow (line)** | `/follow <party unit of the member ahead>` |
-| `FollowL` (new) | `WBX FollowLead` | **Follow leader** | `/follow <unit>` – exactly today's body (`u.main`: party1–4 or focus) |
+| `Follow` (main bar slot 11, as today) | `WBX Follow` | **Follow (line)** | `/follow <name of the member ahead>` |
+| `FollowL` (new) | `WBX FollowLead` | **Follow leader** | `/follow <leader's name>` |
 
 - **Ahead in the line** = the previous member in squad order: the leader first, then the followers in the order the
   Squad page shows. For the first follower, the member ahead is the leader, so both keys follow the leader.
-- **Decision (the owner, 20:57): both keys use party units (party1–4), never names.** Only Invite uses names, as in
-  `squad-v2-simple.md`.
+- **Both keys name the squad member** (`/follow Mira Vale`: Forever names have two parts, written with the space).
+  A party slot is only right while the party holds just the squad: with another player in the group, or after a
+  reshuffle, party1 is someone else. (Earlier decision, 20:57: party units, never names. Replaced because of that.)
+  The party slot below is still worked out: it is how the name is found, and the last name is kept for each slot
+  while you're not grouped.
 - **Party slots are per client.** On follower 2, follower 1 may be party2, while on follower 3, follower 2 may be
   party1. So the addon works out the line unit for this character itself:
   - Store it as `m.lineUnit`, next to `m.unit`, which is used for the leader.

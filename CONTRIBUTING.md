@@ -16,7 +16,8 @@ These are non-negotiable (see `CLAUDE.md` and [`docs/compliance.md`](docs/compli
 2. Automation uses WoW's normal addon API only. Each automation is a named option in Setup → Automation and reacts
    only to squad members in the party.
 3. Imported strings and addon messages are **data only**: never `loadstring`, `RunScript` or `load` on them.
-4. Macro names start with `WBX` (≤ 16 characters). Bodies are ≤ 255 characters, with no `/run`, `/script`,
+4. Macro names start with `WBX` (≤ 16 characters), unless the player named the macro (Rename…, or the name asked for
+   by New macro): that name is the player's, still ≤ 16 characters and never the name of another macro. Bodies are ≤ 255 characters, with no `/run`, `/script`,
    `/console` or `/click`.
 5. Macros, action bars, bindings and settings change only after a click, and never in combat (`Core.whenSafe`).
 6. Lua 5.1, no libraries, English code and UI, no ads and no obfuscation (Blizzard's UI Add-On Policy).
