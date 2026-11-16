@@ -711,8 +711,16 @@ function Book.menuFor(p, c)
       items[#items + 1] = { "Remove", function() removeCell(c) end, "Deletes this macro (also from your bars), frees its slot, and WoWBoxer stops making it." }
     end
   end
-  if c.name and c.item and c.item.status ~= "spell" and ns.Advanced and ns.Advanced.rename then
-    items[#items + 1] = { "Rename…", function() ns.Advanced.rename(c.name, c.label) end, "Your own name for this macro in the game; WoWBoxer keeps knowing it." }
+  if c.name and c.item and ns.Advanced and ns.Advanced.rename then
+    if c.item.status == "spell" then
+      -- the spell itself on your bar: a name of yours makes it a macro, which takes the spell's buttons
+      items[#items + 1] = { "Rename…", function()
+        local spell = c.d and c.d.spell
+        ns.Advanced.rename(c.name, c.label, function() Core().plainToMacro(c.name, spell) end)
+      end, "Makes it a macro with your own name (now it's the spell itself on your bar); the macro takes the spell's buttons." }
+    else
+      items[#items + 1] = { "Rename…", function() ns.Advanced.rename(c.name, c.label) end, "Your own name for this macro in the game; WoWBoxer keeps knowing it." }
+    end
   end
   if c.d and c.d.edited and c.name then
     items[#items + 1] = { "Let WoWBoxer update it", function()

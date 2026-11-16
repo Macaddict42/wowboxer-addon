@@ -56,13 +56,6 @@ do
   Core.cdb.squadKeys = { Wand = true }
   Core.sync()
   -- a plain spell's key that you rename stays a macro
-  local plain
-  for _, d in ipairs(Core.compute().desired) do if d.plain and not plain then plain = d.name end end
-  if plain then
-    H.ok(Core.renameMacro(plain, "Mine"), "a plain spell's key renamed")
-    H.ok(not desired(ns)[plain].plain, "it stays a macro")
-    H.eq(ns.Book.shortLabel(items(ns)[plain]), "Mine", "the book's label is your name")
-  end
   -- your own text: the spells it really casts
   local _, me = Core.me()
   local idx = ns.KeyEditor.save(me, { name = "", kind = "sequence", aim = "harm", steps = { "Smite" }, filler = "Smite", fills = 1, reset = "combat" })
@@ -80,6 +73,40 @@ do
   H.ok(not desired(ns)["WBX Wand"].body:find("/assist", 1, true), "switch off: the Wand macro shoots your own target")
   Core.cdb.keyLines = { ["WBX Wand"] = { assist = true } }
   H.ok(desired(ns)["WBX Wand"].body:find("/assist", 1, true) ~= nil, "the Wand macro's own choice beats the switch")
+end
+
+-- ------------------------------------------------------------------ renaming a key that is the spell itself
+do
+  local W, ns = boot({ name = "Lock", class = "WARLOCK", race = "Scourge", level = 20 })
+  local Core = ns.Core
+  ns.State.quickStart(Core.db, Core.cdb, Core.playerInfo())
+  Core.cdb.extras = { "warlock-demon-skin", "warlock-life-tap" }
+  local plain, spell
+  for _, d in ipairs(Core.compute().desired) do if d.plain and not plain then plain, spell = d.name, d.spell end end
+  H.ok(plain ~= nil, "a key that is the spell itself on the bar: " .. tostring(plain))
+  if plain then
+    local id = ns.Compat.bestRankId(spell) or (spell.ranks and spell.ranks[1] and spell.ranks[1].id)
+    W.combat = false; W.env.PickupSpell(id); W.env.PlaceAction(40); W.env.ClearCursor()
+    H.eq((ns.Compat.actionInfo(40) or {}).kind, "spell", "the spell is on button 40")
+    H.ok(Core.renameMacro(plain, "Mine"), "renamed")
+    H.ok(not desired(ns)[plain].plain, "it is a macro now")
+    H.eq(ns.Book.shortLabel(items(ns)[plain]), "Mine", "the book's label is your name")
+    Core.plainToMacro(plain, spell)
+    H.ok(W.env.GetMacroIndexByName("Mine") > 0, "the macro is made at once")
+    H.eq(W.slotMacroName(40), "Mine", "and takes the spell's button")
+    -- the menu offers Rename on such a key
+    Core.renameMacro(plain, "")
+    ns.UI.Open("keys")
+    local cell
+    for _, b in ipairs(ns.UI.panels.keys.cells) do if b:IsShown() and b.cell and b.cell.name == plain then cell = b end end
+    H.ok(cell ~= nil, "its card on the Macros page")
+    if cell then
+      cell:Click("RightButton")
+      local has = false
+      for _, r in ipairs(ns.Widgets.menuFrame.rows) do if r:IsShown() and r.label._text == "Rename…" then has = true end end
+      H.ok(has, "Rename… in its menu")
+    end
+  end
 end
 
 -- ------------------------------------------------------------------ deleting an own macro takes its keybinds

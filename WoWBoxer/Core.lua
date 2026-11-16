@@ -392,6 +392,24 @@ function Core.makeNow(names, why)
     Core.changed()
   end)
 end
+--- A key that was the spell itself on your bar and now is a macro (you renamed it): the macro is made now and takes
+--- the buttons that hold that spell (`spell` = the spell: any of its ranks, or its name).
+function Core.plainToMacro(name, spell)
+  Core.makeNow({ [name] = true }, "renamed spell")
+  if C.inCombat() or type(spell) ~= "table" then return end
+  local idx = M.findIndex(name)
+  if not idx then return end
+  local ids = {}
+  for _, r in ipairs(spell.ranks or {}) do if r.id then ids[r.id] = true end end
+  if spell.id and tonumber(spell.id) then ids[tonumber(spell.id)] = true end
+  local n = 0
+  for slot = 1, B.MAX_SLOT do
+    local a = C.actionInfo(slot)
+    if a and a.kind == "spell" and (ids[a.id] or C.spellName(a.id) == spell.name) then B.placeMacro(idx, slot, "renamed spell"); n = n + 1 end
+  end
+  if n > 0 then Core.log("info", name .. " is a macro now: on " .. n .. " button(s) that held " .. tostring(spell.name)) end
+  Core.changed()
+end
 --- Remove WBX macros now (a click: Remove, an unticked squad key): the macro and its slot go at once (from your bars
 --- too); what stops WoWBoxer making it again is the caller's (skip, untick, extras list).
 function Core.removeNow(names, why)

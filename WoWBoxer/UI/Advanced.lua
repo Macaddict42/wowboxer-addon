@@ -331,7 +331,7 @@ local function editorFrame(parent)
   W.ddTip(f.reset, "Reset", "When a sequence macro starts over: after combat, on a new target, after some seconds.")
   -- extra lines this macro has (Talex, #help 10 Nov): one tick each; unticked = not in this macro (beats the switch)
   f.linesHead = W.text(f, "GameFontHighlightSmall", 10, W.MUTED)
-  f.linesHead:SetPoint("TOPLEFT", 80, oy - 26)
+  f.linesHead:SetPoint("TOPLEFT", 80, oy - 30) -- its ticks: 5 below the option dropdowns, 5 above the Preview box
   f.linesHead:SetText("Extra lines:")
   f.linesHead.wbxCopy = "label"
   part(f.linesHead)
@@ -362,7 +362,7 @@ local function editorFrame(parent)
   f.linesNone.wbxCopy = "hint"
   part(f.linesNone)
   -- 4 Preview
-  local py = oy - 52
+  local py = oy - 53
   head("4 Preview", 10, py)
   f.preview = W.text(f, "GameFontHighlightSmall", 9, themed and W.TEXT or { 0.6, 0.66, 0.52 })
   W.gameFont(f.preview)
@@ -806,18 +806,19 @@ function A.refreshLines()
     end
     c:SetShown(x ~= nil and not spells)
   end
-  f.linesNone:SetShown(#list == 0 and not spells)
-  -- Nearest enemy: after the last extra line (enemy macros)
+  -- Nearest enemy: after the last extra line (enemy macros), spaced like the line ticks
   local te = f.tgtEnemy
+  local teShown = te ~= nil and not spells and f.help ~= true
   if te then
-    local after = f.linesHead
-    if #list == 0 then after = f.linesNone else after = (f.lineChecks[math.min(#list, #f.lineChecks)] or {}).label or f.linesHead end
     te:ClearAllPoints()
-    te:SetPoint("LEFT", after, "RIGHT", 12, 0)
+    if #list == 0 then te:SetPoint("LEFT", f.linesHead, "RIGHT", 6, 0)
+    else te:SetPoint("LEFT", (f.lineChecks[math.min(#list, #f.lineChecks)] or {}).label or f.linesHead, "RIGHT", 10, 0) end
     if te.wbxSkinned and te.SetHitRectInsets then te:SetHitRectInsets(0, -math.ceil((te.label:GetStringWidth() or 0) + 4), 0, 0) end
     te:SetChecked(f.opts and f.opts.targetenemy and true or false)
-    te:SetShown(not spells and f.help ~= true)
+    te:SetShown(teShown)
   end
+  -- "none" only when the row has no tick at all
+  f.linesNone:SetShown(#list == 0 and not spells and not teShown)
 end
 --- The preview at size 9, a step smaller (down to 7) when a long macro (wand line, many targets) needs more lines than fit.
 function A.fitPreview(fs, body)
@@ -1070,10 +1071,15 @@ function A.askName(title, current, note, onOK)
   f.box:SetFocus()
 end
 --- Right-click > Rename...: your own name for a WoWBoxer macro in the game.
-function A.rename(name, label)
+--- after (optional): runs once the rename went through.
+function A.rename(name, label, after)
   local cur = ns.Macros.userName(name) or ""
   A.askName("Rename " .. tostring(label or name), cur, "Its name in the game (at most " .. ns.Rules.NAME_LIMIT .. " letters). Empty = " .. name .. ".",
-    function(v) return Core().renameMacro(name, v) end)
+    function(v)
+      local ok, why = Core().renameMacro(name, v)
+      if ok and after then after() end
+      return ok, why
+    end)
 end
 
 local function resetFrame()
