@@ -1,0 +1,14 @@
+{
+  "_about": "Fixes to the Forever seed's spell rules (vendor/companion is read-only). renames: the name /cast needs; actions: how the key aims.",
+  "renames": {
+    "mage": {
+      "Polymorph (Turtle)": "Polymorph: Turtle",
+      "Polymorph (Pig)": "Polymorph: Pig"
+    }
+  },
+  "actions": {
+    "priest": {
+      "Penance": "dualcast"
+    }
+  }
+}

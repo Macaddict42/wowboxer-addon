@@ -15,6 +15,8 @@ const fs = require('fs');
 const path = require('path');
 const { load } = require('./companion');
 const FOREVER = require('./forever_data');
+const SPELL_FIX = Object.assign({ renames: {}, actions: {} },
+  JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'datasrc', 'forever', 'spells-fix.json'), 'utf8')));
 
 const DATA = path.join(__dirname, '..', 'WoWBoxer', 'Data');
 // game key (ns.dataGame) -> folder, and where its data comes from
@@ -112,6 +114,9 @@ function filesFor(g) {
       const o = spellOut(m.seed);
       if (m.name !== m.seed.name) { o.name = m.name; o.id = cls + '-' + m.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
       o.gate = m.gate; o.talent = m.talent; o.ranks = m.ranks; o.level = m.ranks.length ? m.ranks[0].l : o.level;
+      // datasrc/forever/spells-fix.json: the name /cast needs (id kept), how the key aims
+      const rn = (SPELL_FIX.renames[cls] || {})[o.name]; if (rn) o.name = rn;
+      const ac = (SPELL_FIX.actions[cls] || {})[o.name]; if (ac) o.action = ac;
       return o;
     });
     // Forever spells the pre-launch seed lacks (datasrc/forever/spells-extra.json, client tables; owner 10 Nov 2026)

@@ -601,7 +601,7 @@ D.spells.mage = {
  },
  {
   id="mage-polymorph-turtle",
-  name="Polymorph (Turtle)",
+  name="Polymorph: Turtle",
   category="Control",
   action="hostile",
   icon="ability_hunter_pet_turtle",
@@ -618,7 +618,7 @@ D.spells.mage = {
  },
  {
   id="mage-polymorph-pig",
-  name="Polymorph (Pig)",
+  name="Polymorph: Pig",
   category="Control",
   action="hostile",
   icon="spell_magic_polymorphpig",
