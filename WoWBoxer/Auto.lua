@@ -383,9 +383,17 @@ function AU.onQuestConfirm(name) -- an escort / shared start from a squad member
 end
 --- Leader: share a quest it just accepted (QUEST_ACCEPTED: retail = questID, Classic = questLogIndex, questID).
 --- QuestLogPushQuest is never called from this event: WoW Forever blocks it there (ADDON_ACTION_BLOCKED
---- "UNKNOWN()", while pcall still reports success). The quest is queued and /wbxshare (a typed command is a key
---- press) shares it. Same on every client, so no game detection can get it wrong.
+--- "UNKNOWN()", while pcall still reports success). The quest is queued and a card asks "Share <quest> with your
+--- party?": the click on Share is a key press, where the game allows it. Same on every client.
 AU.shareQueue = {} -- { id, title }, oldest first; in memory only (a /reload empties it)
+--- The card for the newest queued quest (Share / Not now), or none when the queue is empty.
+function AU.offerShare()
+  local q = AU.shareQueue[#AU.shareQueue]
+  if not (q and ns.Sync and ns.Sync.offer) then return end
+  local more = #AU.shareQueue - 1
+  ns.Sync.offer({ kind = "quest", from = "", id = q.id,
+    text = "Share |cffffd100" .. q.title .. "|r with your party?" .. (more > 0 and (" (" .. more .. " more after this)") or "") })
+end
 function AU.onQuestAccepted(a, b)
   if AU.isLeader() then AU.sendQuestList() end
   if not (AU.on("share") and AU.isLeader() and C().inParty()) or skipShift("share") then return end
@@ -394,7 +402,8 @@ function AU.onQuestAccepted(a, b)
   for i = #AU.shareQueue, 1, -1 do if AU.shareQueue[i].id == id then table.remove(AU.shareQueue, i) end end
   table.insert(AU.shareQueue, { id = id, title = questTitle(id) })
   while #AU.shareQueue > 10 do table.remove(AU.shareQueue, 1) end
-  AU.did("Quest " .. AU.shareQueue[#AU.shareQueue].title .. " accepted: type /wbxshare to share it with the party.")
+  Core().log("info", "auto: quest " .. AU.shareQueue[#AU.shareQueue].title .. " accepted: offered to share")
+  AU.offerShare()
 end
 --- Selects quest `id` in the quest log. Returns true when selected.
 local function selectQuest(id)
@@ -418,38 +427,27 @@ local function pushable(id)
   if G.GetQuestLogPushable then local ok, v = pcall(G.GetQuestLogPushable); if ok and v ~= nil then return v and true or false end end
   return true -- unknown: try
 end
---- /wbxshare: shares the newest queued quest that is still in the log (one per key press).
+--- Share on the card (a click): shares the newest queued quest that is still in the log, then offers the next.
 function AU.sharePending()
-  if not C().inParty() then Core().print("Not in a party: nothing to share with."); return end
+  if not C().inParty() then Core().print("Not in a party: nothing to share with."); AU.shareQueue = {}; return end
   while #AU.shareQueue > 0 do
     local q = table.remove(AU.shareQueue)
     if not selectQuest(q.id) then
-      Core().print(q.title .. " is no longer in your quest log: skipped.")
+      Core().log("info", "auto: " .. q.title .. " is no longer in the quest log: not shared")
     elseif not pushable(q.id) then
       Core().print(q.title .. " can't be shared (the game says it isn't shareable).")
     else
       if call(G.QuestLogPushQuest) then AU.did("Shared quest " .. q.title .. " with the party.") end
-      if #AU.shareQueue > 0 then Core().print(#AU.shareQueue .. " more quest(s) waiting: /wbxshare again.") end
-      return
+      break
     end
   end
-  Core().print("No quest waiting to be shared. /wbxshare status shows why.")
+  AU.offerShare()
 end
-function AU.shareStatus()
-  local _, build, _, toc = G.GetBuildInfo()
-  local yn = function(v) return v and "yes" or "no" end
-  Core().print(("Client: %s (toc %s, build %s). Leader: %s. Share quests: %s. In party: %s. Shift held: %s."):format(
-    tostring(C().game and C().game() or "?"), tostring(toc), tostring(build), yn(AU.isLeader()), yn(AU.on("share")),
-    yn(C().inParty()), yn(shift())))
-  if #AU.shareQueue == 0 then
-    Core().print("Queue empty. Quests are queued when the LEADER accepts one with Share quests on, in a party, after the last /reload.")
-  end
-  for i, q in ipairs(AU.shareQueue) do Core().print(("  %d. %s (quest %d)"):format(i, q.title, q.id)) end
-end
-G.SLASH_WOWBOXERSHARE1 = "/wbxshare"
-G.SlashCmdList.WOWBOXERSHARE = function(msg)
-  msg = tostring(msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
-  if msg == "status" or msg == "debug" then AU.shareStatus() else AU.sharePending() end
+--- Not now on the card: that quest isn't shared; the next one waiting is offered.
+function AU.skipShare()
+  local q = table.remove(AU.shareQueue)
+  if q then Core().log("info", "auto: " .. q.title .. " not shared (Not now)") end
+  AU.offerShare()
 end
 function AU.onQuestProgress()
   if not AU.on("turnin") or skipShift("turn in") then return end

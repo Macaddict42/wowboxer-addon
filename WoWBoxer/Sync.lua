@@ -169,6 +169,9 @@ function SY.show()
     text, go = x.text, "Send"
     goTip = "Sends your WoWBoxer settings to your squad in the party: " .. table.concat(x.changes or {}, ", ") ..
       ". Each character shows what would change and asks before it uses them."
+  elseif x.kind == "quest" then
+    text, go = x.text, "Share"
+    goTip = "Shares the quest with your party (the game only allows it on a click). Turn Share quests off in Automation to stop these."
   elseif x.kind == "guide" then
     text, go, goTip = x.text, "Open guide", "Opens the 5-step squad guide on the Squad page."
   else
@@ -177,7 +180,7 @@ function SY.show()
   o.goTip = goTip
   o.text:SetText(text)
   ns.Widgets.setLabel(o.go, go)
-  ns.Widgets.setLabel(o.no, (x.kind == "session" or x.kind == "guide") and "Close" or x.kind == "push" and "Don't send" or "Ignore")
+  ns.Widgets.setLabel(o.no, (x.kind == "session" or x.kind == "guide") and "Close" or x.kind == "push" and "Don't send" or x.kind == "quest" and "Not now" or "Ignore")
   local maxW = math.min(460, (UIParent:GetWidth() or 800) * 0.9)
   local w = math.max(300, o.go:GetWidth() + o.no:GetWidth() + 26, math.min(maxW, ns.Widgets.measure(text, "GameFontHighlightSmall") + 24))
   o:SetWidth(w)
@@ -193,6 +196,7 @@ function SY.offer(x)
 end
 function SY.dismiss()
   local x = table.remove(SY.queue, 1)
+  if x and x.kind == "quest" then SY.show(); if ns.Auto and ns.Auto.skipShare then ns.Auto.skipShare() end; return end
   if x and x.kind ~= "session" and x.kind ~= "push" then Core().log("info", "ignored " .. x.kind .. " offer from " .. x.from) end
   SY.show()
 end
@@ -220,6 +224,8 @@ function SY.accept()
     Core().print("Using " .. x.from .. "'s WoWBoxer settings here (" .. n .. " changed).")
   elseif x.kind == "push" then
     ns.Settings.send()
+  elseif x.kind == "quest" then
+    ns.Auto.sharePending()
   elseif x.kind == "guide" then
     if ns.Help then ns.Help.ShowSquadGuide() end
   else

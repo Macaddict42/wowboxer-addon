@@ -213,15 +213,27 @@ do
   AU.set("share", true); AU.set("autoInvite", true)
   W.sent = {}
   W.fire("QUEST_ACCEPTED", 4, 555) -- Classic: questLogIndex, questID
-  -- WoW Forever blocks sharing from this event (ADDON_ACTION_BLOCKED): the quest waits for /wbxshare (a key press)
+  -- WoW Forever blocks sharing from this event (ADDON_ACTION_BLOCKED): a card asks, and the click on Share shares it
   H.eq(did(W, "QuestLogPushQuest"), nil, "not shared from the event itself")
   H.eq(#AU.shareQueue, 1, "the quest waits to be shared")
-  H.ok(tostring(AU.last):find("type /wbxshare to share it", 1, true) ~= nil, "it says how to share it: " .. tostring(AU.last))
+  local q = ns.Sync.queue[#ns.Sync.queue]
+  H.ok(q and q.kind == "quest" and q.text:find("with your party?", 1, true), "a card asks: " .. tostring(q and q.text))
+  H.eq(W.env.SlashCmdList.WOWBOXERSHARE, nil, "no /wbxshare command (only /wbx)")
   W.env.GetNumQuestLogEntries = function() return 1 end
   W.env.GetQuestLogTitle = function(i) return "Quest", nil, nil, nil, nil, nil, nil, 555 end
-  W.env.SlashCmdList.WOWBOXERSHARE("")
-  H.ok(did(W, "SelectQuestLogEntry") and did(W, "QuestLogPushQuest"), "/wbxshare shares it")
-  H.eq(#AU.shareQueue, 0, "and the queue is empty")
+  while ns.Sync.queue[1] and ns.Sync.queue[1].kind ~= "quest" do ns.Sync.dismiss() end
+  local function label(b) return b._text or (b.label and b.label._text) end
+  H.eq(label(ns.Sync.frame.go) .. "/" .. label(ns.Sync.frame.no), "Share/Not now", "Share / Not now")
+  ns.Sync.accept()
+  H.ok(did(W, "SelectQuestLogEntry") and did(W, "QuestLogPushQuest"), "Share shares it")
+  H.eq(#AU.shareQueue, 0, "and nothing waits any more")
+  -- Not now: not shared
+  reset(W)
+  W.fire("QUEST_ACCEPTED", 4, 555)
+  while ns.Sync.queue[1] and ns.Sync.queue[1].kind ~= "quest" do ns.Sync.dismiss() end
+  ns.Sync.dismiss()
+  H.eq(did(W, "QuestLogPushQuest"), nil, "Not now: not shared")
+  H.eq(#AU.shareQueue, 0, "and not kept")
   W.env.GetNumQuestLogEntries, W.env.GetQuestLogTitle = nil, nil
   local function qls() local t = {}; for _, m in ipairs(W.sent) do if m.prefix == "WBXA" and m.msg:find("^QL|") then t[#t + 1] = m.msg end end return t end
   H.eq(#qls(), 0, "the quest list waits a moment (several accepts in a row become one message)")
