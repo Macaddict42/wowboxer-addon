@@ -239,21 +239,30 @@ function SY.sessionText()
   local s = Core().me()
   if not (s and #s.members > 1 and ns.Compat.inParty()) then return nil end
   local rows = ns.Squad.readiness()
-  local online, ok, need, other = 0, 0, {}, {}
+  local online, ok, need, other, unknown = 0, 0, {}, {}, {}
   local myVer = ns.Team.version()
   for _, r in ipairs(rows) do
     if r.signal then online = online + 1 end
-    if r.ready and r.ready.keys == 0 then ok = ok + 1 elseif r.ready then need[#need + 1] = r.m.name end
+    if r.ready and r.ready.keys == 0 then ok = ok + 1 elseif r.ready then need[#need + 1] = r.m.name
+    elseif r.signal then unknown[#unknown + 1] = r.m.name end -- online, its macro report not here yet
     if r.version and r.version ~= myVer and not r.me then other[#other + 1] = r.m.name end
   end
   local text = "Squad |cffffd100" .. s.name .. "|r · " .. online .. "/" .. #rows .. " online · macros OK on " .. ok .. "/" .. #rows
   if #need > 0 then text = text .. " · " .. table.concat(need, ", ") .. (#need == 1 and " needs" or " need") .. " Update macros" end
+  if #unknown > 0 then text = text .. " · no macro report from " .. table.concat(unknown, ", ") .. " yet" end
   if #other > 0 then text = text .. " · |cfff0b43c" .. table.concat(other, ", ") .. " run another WoWBoxer version|r" end
-  return text, (online == #rows and ok == #rows and #other == 0)
+  -- fine: nothing that needs you (a report that hasn't arrived yet is not a problem)
+  return text, (online == #rows and #need == 0 and #other == 0), unknown
 end
-function SY.sessionCard()
-  local text, fine = SY.sessionText()
+SY.REPORT_WAIT, SY.REPORT_TRIES = 15, 4 -- after login: wait for missing macro reports (they come with a 15 s heartbeat)
+function SY.sessionCard(tries)
+  local text, fine, unknown = SY.sessionText()
   if not text then return false end
+  tries = tries or 0
+  if #unknown > 0 and tries < SY.REPORT_TRIES then
+    after(SY.REPORT_WAIT, function() if ns.Team.active() then SY.sessionCard(tries + 1) end end)
+    return false
+  end
   -- everyone online, every macro OK, one version: nothing to do, so no card (it showed after every login)
   if fine then Core().log("info", "squad check: " .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")); return false end
   SY.offer({ kind = "session", from = "", text = text })

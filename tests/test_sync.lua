@@ -147,6 +147,22 @@ local text = A.ns.Sync.sessionText()
 H.ok(text and text:find("2/3 online", 1, true) ~= nil, "A: session card counts who reports (C has no squad): " .. tostring(text))
 H.ok(text:find("Wowtwo", 1, true) ~= nil and text:find("Update macros", 1, true) ~= nil, "A: session card names who needs an update: " .. text)
 H.ok(A.ns.Sync.sessionCard(), "A: session card shown")
+-- a member online whose macro report hasn't arrived yet: no card for that alone; it waits for the report
+do
+  local real = A.ns.Squad.readiness
+  A.ns.Squad.readiness = function()
+    local rows = real()
+    for _, r in ipairs(rows) do r.signal = true; r.version = nil; if r.me then r.ready = { keys = 0 } else r.ready = nil end end
+    return rows
+  end
+  local t, fine, unknown = A.ns.Sync.sessionText()
+  H.ok(fine and #unknown == 2, "A: reports not here yet are not a problem: " .. tostring(t))
+  A.ns.Sync.queue = {}
+  H.eq(A.ns.Sync.sessionCard(), false, "A: no card while reports are missing (it checks again)")
+  for _ = 1, 5 do A.W.flush() end
+  H.eq(#A.ns.Sync.queue, 0, "A: still no card when only reports are missing")
+  A.ns.Squad.readiness = real
+end
 H.ok(A.ns.Sync.frame:IsShown(), "A: card visible")
 A.ns.Sync.accept()
 H.ok(A.ns.UI.panels.squad:IsVisible(), "A: Open squad from the card")
