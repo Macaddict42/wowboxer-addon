@@ -382,10 +382,11 @@ function AU.onQuestConfirm(name) -- an escort / shared start from a squad member
   if call(G.ConfirmAcceptQuest) then AU.did("Accepted the quest " .. (short(name) or "?") .. " started.") end
 end
 --- Leader: share a quest it just accepted (QUEST_ACCEPTED: retail = questID, Classic = questLogIndex, questID).
---- QuestLogPushQuest is never called from this event: WoW Forever blocks it there (ADDON_ACTION_BLOCKED
---- "UNKNOWN()", while pcall still reports success). The quest is queued and a card asks "Share <quest> with your
---- party?": the click on Share is a key press, where the game allows it. Same on every client.
+--- It is shared at once (works on Forever, seen in game). Should the game ever block it (ADDON_ACTION_BLOCKED for
+--- QuestLogPushQuest: pcall still reports success), the quest is queued and a card asks "Share <quest> with your
+--- party?": the click on Share is a key press, where the game allows it.
 AU.shareQueue = {} -- { id, title }, oldest first; in memory only (a /reload empties it)
+AU.lastShare = nil -- { id, title, at }: the share just tried (for a blocked notice right after it)
 --- The card for the newest queued quest (Share / Not now), or none when the queue is empty.
 function AU.offerShare()
   local q = AU.shareQueue[#AU.shareQueue]
@@ -399,10 +400,25 @@ function AU.onQuestAccepted(a, b)
   if not (AU.on("share") and AU.isLeader() and C().inParty()) or skipShift("share") then return end
   local id = tonumber(b or a)
   if not id then return end
-  for i = #AU.shareQueue, 1, -1 do if AU.shareQueue[i].id == id then table.remove(AU.shareQueue, i) end end
-  table.insert(AU.shareQueue, { id = id, title = questTitle(id) })
+  local title = questTitle(id)
+  AU.lastShare = { id = id, title = title, at = now() }
+  local QL = G.C_QuestLog
+  local ok
+  if QL and QL.SetSelectedQuest and b == nil then ok = pcall(QL.SetSelectedQuest, a) and call(G.QuestLogPushQuest)
+  elseif G.SelectQuestLogEntry then ok = pcall(G.SelectQuestLogEntry, a) and call(G.QuestLogPushQuest) end
+  if ok then AU.did("Shared quest " .. title .. " with the party.") end
+end
+--- The game blocked one of WoWBoxer's calls (ADDON_ACTION_BLOCKED / _FORBIDDEN: addon, function). A quest share
+--- that was blocked is offered on a card instead (one click shares it).
+function AU.onBlocked(addon, fn)
+  if addon ~= "WoWBoxer" or not tostring(fn or ""):find("QuestLogPushQuest", 1, true) then return end
+  local q = AU.lastShare
+  AU.lastShare = nil
+  if not (q and now() - (q.at or 0) <= 3) then return end
+  for i = #AU.shareQueue, 1, -1 do if AU.shareQueue[i].id == q.id then table.remove(AU.shareQueue, i) end end
+  table.insert(AU.shareQueue, { id = q.id, title = q.title })
   while #AU.shareQueue > 10 do table.remove(AU.shareQueue, 1) end
-  Core().log("info", "auto: quest " .. AU.shareQueue[#AU.shareQueue].title .. " accepted: offered to share")
+  Core().log("info", "auto: the game blocked sharing " .. q.title .. ": offered on a card")
   AU.offerShare()
 end
 --- Selects quest `id` in the quest log. Returns true when selected.
@@ -910,7 +926,8 @@ local f = CreateFrame("Frame")
 AU.frame = f
 local EVENTS = { "CHAT_MSG_ADDON", "PARTY_INVITE_REQUEST", "QUEST_DETAIL", "QUEST_ACCEPT_CONFIRM", "QUEST_ACCEPTED", "QUEST_PROGRESS",
   "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_GREETING", "GOSSIP_SHOW", "GOSSIP_CLOSED", "TAXIMAP_OPENED", "TAXIMAP_CLOSED", "RESURRECT_REQUEST",
-  "CONFIRM_SUMMON", "LFG_ROLE_CHECK_SHOW", "MERCHANT_SHOW", "GROUP_ROSTER_UPDATE", "QUEST_REMOVED" }
+  "CONFIRM_SUMMON", "LFG_ROLE_CHECK_SHOW", "MERCHANT_SHOW", "GROUP_ROSTER_UPDATE", "QUEST_REMOVED", "ADDON_ACTION_BLOCKED",
+  "ADDON_ACTION_FORBIDDEN" }
 function AU.Init()
   local CI = G.C_ChatInfo
   local regp = (CI and CI.RegisterAddonMessagePrefix) or G.RegisterAddonMessagePrefix
@@ -960,6 +977,7 @@ f:SetScript("OnEvent", function(_, event, a, b, c, d)
     elseif event == "QUEST_DETAIL" then AU.onQuestDetail()
     elseif event == "QUEST_ACCEPT_CONFIRM" then AU.onQuestConfirm(a)
     elseif event == "QUEST_ACCEPTED" then AU.onQuestAccepted(a, b)
+    elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then AU.onBlocked(a, b)
     elseif event == "QUEST_REMOVED" then if AU.isLeader() then AU.sendQuestList() end
     elseif event == "QUEST_PROGRESS" then AU.onQuestProgress()
     elseif event == "QUEST_COMPLETE" then AU.onQuestComplete()

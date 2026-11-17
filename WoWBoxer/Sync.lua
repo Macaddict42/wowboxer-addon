@@ -171,7 +171,7 @@ function SY.show()
       ". Each character shows what would change and asks before it uses them."
   elseif x.kind == "quest" then
     text, go = x.text, "Share"
-    goTip = "Shares the quest with your party (the game only allows it on a click). Turn Share quests off in Automation to stop these."
+    goTip = "The game blocked sharing this quest automatically; a click on Share shares it. Turn Share quests off in Automation to stop these."
   elseif x.kind == "guide" then
     text, go, goTip = x.text, "Open guide", "Opens the 5-step squad guide on the Squad page."
   else

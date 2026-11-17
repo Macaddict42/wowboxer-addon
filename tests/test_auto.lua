@@ -213,24 +213,32 @@ do
   AU.set("share", true); AU.set("autoInvite", true)
   W.sent = {}
   W.fire("QUEST_ACCEPTED", 4, 555) -- Classic: questLogIndex, questID
-  -- WoW Forever blocks sharing from this event (ADDON_ACTION_BLOCKED): a card asks, and the click on Share shares it
-  H.eq(did(W, "QuestLogPushQuest"), nil, "not shared from the event itself")
-  H.eq(#AU.shareQueue, 1, "the quest waits to be shared")
-  local q = ns.Sync.queue[#ns.Sync.queue]
-  H.ok(q and q.kind == "quest" and q.text:find("with your party?", 1, true), "a card asks: " .. tostring(q and q.text))
+  H.ok(did(W, "SelectQuestLogEntry") and did(W, "QuestLogPushQuest"), "the leader shares a quest it accepts, at once")
+  local function cards() local n = 0; for _, q in ipairs(ns.Sync.queue) do if q.kind == "quest" then n = n + 1 end end return n end
+  H.eq(cards(), 0, "no card when the share went through")
   H.eq(W.env.SlashCmdList.WOWBOXERSHARE, nil, "no /wbxshare command (only /wbx)")
+  -- the game blocks the share (ADDON_ACTION_BLOCKED right after it): a card offers it, one click shares it
+  W.fire("ADDON_ACTION_BLOCKED", "OtherAddon", "QuestLogPushQuest()")
+  H.eq(cards(), 0, "another addon's block: no card")
+  W.fire("ADDON_ACTION_BLOCKED", "WoWBoxer", "QuestLogPushQuest()")
+  H.eq(cards(), 1, "blocked: a card offers the quest")
+  local q
+  for _, x in ipairs(ns.Sync.queue) do if x.kind == "quest" then q = x end end
+  H.ok(q and q.text:find("with your party?", 1, true), "it asks: " .. tostring(q and q.text))
   W.env.GetNumQuestLogEntries = function() return 1 end
   W.env.GetQuestLogTitle = function(i) return "Quest", nil, nil, nil, nil, nil, nil, 555 end
   while ns.Sync.queue[1] and ns.Sync.queue[1].kind ~= "quest" do ns.Sync.dismiss() end
   local function label(b) return b._text or (b.label and b.label._text) end
   H.eq(label(ns.Sync.frame.go) .. "/" .. label(ns.Sync.frame.no), "Share/Not now", "Share / Not now")
+  reset(W)
   ns.Sync.accept()
   H.ok(did(W, "SelectQuestLogEntry") and did(W, "QuestLogPushQuest"), "Share shares it")
   H.eq(#AU.shareQueue, 0, "and nothing waits any more")
   -- Not now: not shared
-  reset(W)
   W.fire("QUEST_ACCEPTED", 4, 555)
+  W.fire("ADDON_ACTION_BLOCKED", "WoWBoxer", "QuestLogPushQuest()")
   while ns.Sync.queue[1] and ns.Sync.queue[1].kind ~= "quest" do ns.Sync.dismiss() end
+  reset(W)
   ns.Sync.dismiss()
   H.eq(did(W, "QuestLogPushQuest"), nil, "Not now: not shared")
   H.eq(#AU.shareQueue, 0, "and not kept")
