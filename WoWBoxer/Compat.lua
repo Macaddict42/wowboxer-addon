@@ -58,8 +58,10 @@ function C.inCombat() return InCombatLockdown() and true or false end
 -- ------------------------------------------------------------------ spellbook
 --- Set of spell names the player knows (from the spellbook). nil if no spellbook API was found.
 --- Cached until the spellbook changes (Core calls C.invalidateSpellbook on SPELLS_CHANGED / LEARNED_* / level-up).
-local bookCache, bookSource, itemsCache
-function C.invalidateSpellbook() bookCache, bookSource, itemsCache = nil, nil, nil end
+local bookCache, bookSource, itemsCache, talentCache, talentSrc
+function C.invalidateSpellbook() bookCache, bookSource, itemsCache, talentCache, talentSrc = nil, nil, nil, nil, nil end
+--- Is a spellbook skill line another spec's? offSpecID is nil (or 0 on a client without specs) on the lines in use.
+local function offSpecLine(info) local o = info.offSpecID; return o ~= nil and o ~= 0 and o ~= false end
 function C.knownSpellNames()
   if bookCache ~= nil then return bookCache or nil, bookSource end
   local names, src = C.scanSpellbook()
@@ -135,7 +137,7 @@ function C.spellbookItems()
     local SPELL, FUTURE = T.Spell or 1, T.FutureSpell or 2
     for i = 2, SB.GetNumSpellBookSkillLines() do -- 1 = General
       local okL, info = pcall(SB.GetSpellBookSkillLineInfo, i)
-      if okL and type(info) == "table" and not info.shouldHide and not info.isGuild and not info.offSpecID then
+      if okL and type(info) == "table" and not info.shouldHide and not info.isGuild and not offSpecLine(info) then
         local off, num = info.itemIndexOffset or 0, info.numSpellBookItems or 0
         for j = off + 1, off + num do
           local ok, it = pcall(SB.GetSpellBookItemInfo, j, bank)
@@ -210,6 +212,9 @@ function C.bestRankId(spell)
     local lvl, best = C.playerLevel() or 1, nil
     for _, r in ipairs(spell.ranks) do if r.id and (r.l == nil or r.l <= lvl) then best = r.id end end
     return best or spell.ranks[1].id
+  end
+  for _, t in ipairs(C.talentSpells() or {}) do -- a spent talent's spell (C_Traits) the book scan does not list
+    if not t.passive and t.id and (t.name == spell.name or C.isRankOf(t.id, spell)) then return t.id end
   end
   return nil
 end
@@ -466,6 +471,145 @@ function C.talentTreeDump()
     end
   end
   return out
+end
+
+--- Every skill line of the spellbook as the client reports it, for the diagnose (owner, 15 Nov 2026: the book scan
+--- did not see the Forever talent spells – which lines are there, and why are they skipped?). Read-only.
+--- {{i, name, offSpecID, shouldHide, isGuild, offset, items, passive, future, skipped, spells}} or nil without the API.
+function C.spellbookLinesDiag()
+  local SB = G.C_SpellBook
+  local out = {}
+  if SB and SB.GetNumSpellBookSkillLines and SB.GetSpellBookSkillLineInfo then
+    local bank = (G.Enum and G.Enum.SpellBookSpellBank and G.Enum.SpellBookSpellBank.Player) or 0
+    local T = G.Enum and G.Enum.SpellBookItemType or {}
+    local okN, n = pcall(SB.GetNumSpellBookSkillLines)
+    for i = 1, okN and tonumber(n) or 0 do
+      local okL, info = pcall(SB.GetSpellBookSkillLineInfo, i)
+      if okL and type(info) == "table" then
+        local row = { i = i, name = C.safe(info.name), offSpecID = C.safe(info.offSpecID), shouldHide = C.safe(info.shouldHide) or nil,
+          isGuild = C.safe(info.isGuild) or nil, offset = C.safe(info.itemIndexOffset), items = C.safe(info.numSpellBookItems) or 0, passive = 0, future = 0 }
+        row.skipped = (i == 1 and "General") or (row.shouldHide and "shouldHide") or (row.isGuild and "guild") or (offSpecLine(info) and "offSpec") or nil
+        local names = {}
+        for j = (row.offset or 0) + 1, (row.offset or 0) + row.items do
+          local ok, it = false, nil
+          if SB.GetSpellBookItemInfo then ok, it = pcall(SB.GetSpellBookItemInfo, j, bank) end
+          if ok and type(it) == "table" then
+            if it.isPassive then row.passive = row.passive + 1 end
+            if T.FutureSpell and it.itemType == T.FutureSpell then row.future = row.future + 1 end
+            local nm = C.safe(it.name)
+            if nm and #names < 40 then names[#names + 1] = nm .. (it.isPassive and "(p)" or "") .. (it.isOffSpec and "(off)" or "") end
+          end
+        end
+        row.spells = table.concat(names, ", ")
+        out[#out + 1] = row
+      end
+    end
+    return out
+  end
+  if G.GetNumSpellTabs and G.GetSpellTabInfo then
+    for i = 1, G.GetNumSpellTabs() do
+      local name, _, off, num, _, offSpec = G.GetSpellTabInfo(i)
+      local row = { i = i, name = name, offSpecID = offSpec, offset = off, items = num or 0, passive = 0, future = 0 }
+      for j = (off or 0) + 1, (off or 0) + (num or 0) do
+        if G.IsPassiveSpell then local ok, p = pcall(G.IsPassiveSpell, j, G.BOOKTYPE_SPELL or "spell"); if ok and p then row.passive = row.passive + 1 end end
+      end
+      row.skipped = (i == 1 and "General") or ((offSpec and offSpec ~= 0) and "offSpec") or nil
+      out[#out + 1] = row
+    end
+    return out
+  end
+  return nil
+end
+
+local function overrideOf(id)
+  local CS = G.C_Spell
+  local f = (CS and CS.GetOverrideSpell) or G.FindSpellOverrideByID
+  if not (f and id) then return id end
+  local ok, o = pcall(f, id)
+  o = ok and C.safe(o) or nil
+  return (type(o) == "number" and o > 0) and o or id
+end
+local function spellIcon(id)
+  local CS = G.C_Spell
+  local f = (CS and CS.GetSpellTexture) or G.GetSpellTexture
+  if not (f and id) then return nil end
+  local ok, t = pcall(f, id)
+  return ok and C.safe(t) or nil
+end
+local function isPassiveId(id)
+  local CS = G.C_Spell
+  local f = CS and CS.IsSpellPassive
+  if not (f and id) then return false end
+  local ok, p = pcall(f, id)
+  return ok and p and true or false
+end
+--- The talents this character has really spent, with the spell each one gives (owner, 15 Nov 2026: All spells must
+--- hold every talent spell, from the game, not the plan). Read-only.
+--- Forever: the active C_Traits config, every node with ranks spent → its entry's spell, the active override of that
+--- spell included (C_Spell.GetOverrideSpell). Era/TBC: GetTalentInfo (spent talents by name) + the spellbook (the
+--- talent's spell is the book entry with that name; a passive talent has none).
+--- Returns {{talent, name, id, icon, rank, passive, base?}}, source ("C_Traits" | "GetTalentInfo") – or nil, "none".
+--- Cached with the spellbook (C.invalidateSpellbook on SPELLS_CHANGED and the talent events).
+function C.talentSpells()
+  if talentCache ~= nil then return talentCache or nil, talentSrc end
+  local out, src = nil, "none"
+  local CT, TR = G.C_ClassTalents, G.C_Traits
+  if CT and CT.GetActiveConfigID and TR and TR.GetConfigInfo and TR.GetTreeNodes and TR.GetNodeInfo and TR.GetEntryInfo and TR.GetDefinitionInfo then
+    local ok, configID = pcall(CT.GetActiveConfigID)
+    configID = ok and C.safe(configID) or nil
+    local config = configID and select(2, pcall(TR.GetConfigInfo, configID))
+    if type(config) == "table" and type(config.treeIDs) == "table" then
+      out, src = {}, "C_Traits"
+      local seen = {}
+      for _, treeID in ipairs(config.treeIDs) do
+        local okN, nodes = pcall(TR.GetTreeNodes, C.safe(treeID))
+        for _, nodeID in ipairs(okN and type(nodes) == "table" and nodes or {}) do
+          local okI, node = pcall(TR.GetNodeInfo, configID, C.safe(nodeID))
+          if okI and type(node) == "table" then
+            local rank = C.safe(node.ranksPurchased)
+            if type(rank) ~= "number" or rank == 0 then rank = C.safe(node.currentRank) end
+            if type(rank) ~= "number" or rank == 0 then rank = C.safe(node.activeRank) end
+            local entryID = type(node.activeEntry) == "table" and C.safe(node.activeEntry.entryID) or nil
+            if not entryID and type(node.entryIDs) == "table" then entryID = C.safe(node.entryIDs[1]) end
+            if type(rank) == "number" and rank > 0 and entryID then
+              local okE, entry = pcall(TR.GetEntryInfo, configID, entryID)
+              local defID = okE and type(entry) == "table" and C.safe(entry.definitionID) or nil
+              local okD, def = false, nil
+              if defID then okD, def = pcall(TR.GetDefinitionInfo, defID) end
+              local base = okD and type(def) == "table" and C.safe(def.spellID) or nil
+              if base then
+                local id = overrideOf(base)
+                local name = spellName(id) or (id == base and C.safe(def.overrideName)) or spellName(base)
+                if name and not seen[id] then
+                  seen[id] = true
+                  out[#out + 1] = { talent = C.safe(def.overrideName) or spellName(base) or name, name = name, id = id, base = id ~= base and base or nil,
+                    icon = spellIcon(id) or C.safe(def.overrideIcon), rank = rank, passive = isPassiveId(id) }
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  if not out and G.GetNumTalentTabs and G.GetNumTalents and G.GetTalentInfo then
+    out, src = {}, "GetTalentInfo"
+    local book = {}
+    for _, it in ipairs(C.spellbookItems() or {}) do if not it.future then book[it.name] = it end end -- the last = the highest rank
+    local okT, tabs = pcall(G.GetNumTalentTabs)
+    for t = 1, okT and tonumber(tabs) or 0 do
+      local okN, n = pcall(G.GetNumTalents, t)
+      for i = 1, okN and tonumber(n) or 0 do
+        local okI, name, icon, _, _, rank = pcall(G.GetTalentInfo, t, i)
+        if okI and type(name) == "string" and tonumber(rank) and rank > 0 then
+          local it = book[name]
+          out[#out + 1] = { talent = name, name = name, id = it and it.id or nil, icon = it and it.icon or icon, rank = rank, passive = it == nil }
+        end
+      end
+    end
+  end
+  talentCache, talentSrc = out or false, src
+  return out, src
 end
 
 -- Frames of the extra bars (same names in Classic Era and the modern UI). Bar 1 is always shown.

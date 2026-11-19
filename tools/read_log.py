@@ -211,6 +211,24 @@ def main():
                 for it in (ex if isinstance(ex, list) else []):
                     print(f"     {it.get('name')} id {it.get('id')} {it.get('rank') or ''} {('level ' + str(it.get('level'))) if it.get('level') else ''}"
                           f"{' (future)' if it.get('future') else ''}")
+            sl = d.get("spellbookLines")
+            if isinstance(sl, list):
+                print(f"   spellbook skill lines: {len(sl)}")
+                for ln in sl:
+                    if isinstance(ln, dict):
+                        print(f"     {ln.get('i')} {ln.get('name')!r} offSpecID {ln.get('offSpecID')} shouldHide {ln.get('shouldHide')} "
+                              f"items {ln.get('items')} passive {ln.get('passive')} future {ln.get('future')}"
+                              f"{(' SKIPPED ' + str(ln.get('skipped'))) if ln.get('skipped') else ''}")
+                        if ln.get("spells"):
+                            print(f"        {ln.get('spells')}")
+            ts = d.get("talentSpells")
+            if isinstance(ts, dict) and isinstance(ts.get("spells"), list):
+                print(f"   talent spells ({ts.get('source')}): {len(ts['spells'])}")
+                for it in ts["spells"]:
+                    print(f"     {it.get('talent')} -> {it.get('name')} id {it.get('id')}"
+                          f"{(' (override of ' + str(it.get('base')) + ')') if it.get('base') else ''} rank {it.get('rank')}: {it.get('shown')}")
+            elif isinstance(ts, dict) and ts.get("error"):
+                print(f"   talent spells: error {ts.get('error')}")
             au = d.get("auto") if isinstance(d.get("auto"), dict) else {}
             if "abandonHooks" in au:
                 hk = au.get("abandonHooks") or {}

@@ -166,7 +166,10 @@ end
 function M.liveCheck()
   local names = C.knownSpellNames()
   if not names then return nil end
-  return function(name, spell) return names[name] == true or C.knowsAnyRank(spell) end
+  -- + the spells of the talents really spent (C_Traits / GetTalentInfo): the book scan may not list them (Forever)
+  local talents = {}
+  for _, t in ipairs(C.talentSpells and C.talentSpells() or {}) do if not t.passive and t.name then talents[t.name] = true end end
+  return function(name, spell) return names[name] == true or talents[name] == true or C.knowsAnyRank(spell) end
 end
 
 local function shortName(name) local s = R.PREFIX .. " " .. name; if #s > R.NAME_LIMIT then s = s:sub(1, R.NAME_LIMIT) end return s end

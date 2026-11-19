@@ -84,6 +84,7 @@ function K.bookSpells(m)
   if per[key] then return per[key] end
   local have = {}
   for _, s in ipairs(D().spells[m.cls] or {}) do have[s.name] = true end -- every data spell, also other races' (no doubles)
+  for n in pairs(K.liveTalents(m).names) do have[n] = true end -- a spent talent's spell is listed once, as a talent spell
   for _, s in ipairs(K.racialsOf(m)) do have[s.name] = true end
   local w = K.wandOf(m)
   if w then have[w.name] = true end
@@ -106,12 +107,64 @@ function K.bookSpells(m)
   per[key] = out
   return out
 end
---- Spells an own macro can use: the class spells plus Shoot for wand classes, plus the book's extra spells.
+--- The talents this character has really spent and the active spells they give (owner, 15 Nov 2026: All spells
+--- must hold every spell the character can cast, talent spells included – what the game says, not the plan).
+--- Source: Compat.talentSpells (C_Traits on Forever, GetTalentInfo + the spellbook on Era/TBC). Only for the
+--- logged-in character. Returns {spells, data, names, shadow, live}:
+---   spells = talent spells the data does not have (or has under another name): {id = "talent-<spellID>", name =
+---            the game's name, icon, ranks = {{id}}, fromTalents = true}, cast by name like the book's spells;
+---   data   = {[data spell] = true} for data spells the game says are spent (shown as learned, whatever the plan);
+---   names  = {[game name] = true} for every active talent spell; shadow = data spells replaced by a renamed one;
+---   live   = true when the client can tell (a talent API is there), false in tests and without one.
+local EMPTY_TALENTS = { spells = {}, data = {}, names = {}, shadow = {}, live = false }
+local talentMemo = setmetatable({}, { __mode = "k" })
+function K.liveTalents(m)
+  local cdb = ns.Core and ns.Core.cdb
+  if not (m and cdb and m.id ~= nil and m.id == cdb.memberId) then return EMPTY_TALENTS end
+  local list = ns.Compat.talentSpells and ns.Compat.talentSpells()
+  if not list then return EMPTY_TALENTS end
+  local per = talentMemo[list]
+  if not per then per = {}; talentMemo[list] = per end
+  local key = tostring(m.cls) .. ":" .. tostring(m.race) .. ":" .. tostring(m.level)
+  if per[key] then return per[key] end
+  local byId, byName = {}, {}
+  for _, s in ipairs(K.spellsOf(m)) do
+    byName[s.name] = byName[s.name] or s
+    for _, r in ipairs(s.ranks or {}) do if r.id then byId[r.id] = byId[r.id] or s end end
+  end
+  local out = { spells = {}, data = {}, names = {}, shadow = {}, live = true }
+  local made = {}
+  for _, t in ipairs(list) do
+    if not t.passive and t.id and type(t.name) == "string" then
+      out.names[t.name] = true
+      local d = byName[t.name] or byId[t.id] or (t.base and byId[t.base])
+      if d and d.name == t.name then
+        if d.action ~= "passive" then out.data[d] = true end
+      elseif not made[t.name] then
+        if d then out.shadow[d] = true end -- renamed in the game: the game's name wins, the data's card goes
+        local s = { id = "talent-" .. tostring(t.id), cls = m.cls, name = t.name, category = d and d.category or "Utility", action = "self",
+          icon = t.icon or (d and d.icon), level = 1, gate = "trainer", fromTalents = true, ranks = { { r = 1, id = t.id } } }
+        made[t.name] = s
+        out.spells[#out.spells + 1] = s
+      end
+    end
+  end
+  per[key] = out
+  return out
+end
+--- Does the game say member m has spell s from a spent talent? (always false for other members and in tests)
+function K.gameTalent(m, s)
+  local lt = K.liveTalents(m)
+  return lt.live and s ~= nil and (lt.data[s] or lt.names[s.name] or false) and true or false
+end
+--- Spells an own macro can use: the class spells plus Shoot for wand classes, plus the book's extra spells and the
+--- spent talents' spells the data does not have.
 function K.customSpellsOf(m)
   local out = K.spellsOf(m)
   local w = K.wandOf(m)
   if w then out[#out + 1] = w end
   for _, s in ipairs(K.bookSpells(m)) do out[#out + 1] = s end
+  for _, s in ipairs(K.liveTalents(m).spells) do out[#out + 1] = s end
   return out
 end
 
@@ -155,6 +208,7 @@ function K.learned(m, s, level) return s.level <= level and (s.gate ~= "talent" 
 function K.usable(m, s, L, live)
   if s.gate == "wand" then return true end -- the wand's Shoot: the macro line itself needs no spellbook entry
   if live and D().game and D().game.liveSpells then return live(s.name, s) and true or false end
+  if live and s.gate == "talent" and K.gameTalent(m, s) then return true end -- spent in the game, whatever the plan says
   return K.learned(m, s, L) and (not live or live(s.name, s)) and true or false
 end
 

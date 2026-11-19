@@ -83,6 +83,22 @@ function Core.extraSpellsDiag()
   end
   return out
 end
+--- The spent talents and their spells as the game reports them, for the diagnose (owner, 15 Nov 2026):
+--- {source, spells = {{talent, name, id, base?, rank, passive, shown}}}; shown = where All spells lists it
+--- ("data" = WoWBoxer's own card, "talent" = a talent card, "passive" = not listed). Read-only.
+function Core.talentSpellsDiag()
+  local list, src = C.talentSpells()
+  local out = { source = src, spells = {} }
+  local _, m = Core.me()
+  local lt = m and K.liveTalents(m)
+  local mine = {}
+  for _, s in ipairs(lt and lt.spells or {}) do mine[s.name] = true end
+  for _, t in ipairs(list or {}) do
+    out.spells[#out.spells + 1] = { talent = t.talent, name = t.name, id = t.id, base = t.base, rank = t.rank, passive = t.passive or nil,
+      shown = t.passive and "passive" or (not t.id and "no spell") or (mine[t.name] and "talent") or "data" }
+  end
+  return out
+end
 function Core.me()
   local db, cdb = Core.db, Core.cdb
   if not db then return nil end
@@ -1162,6 +1178,11 @@ function Core.selftest(quiet)
   r.ui.helpUsed = ns.Help and ns.Help.diag or nil
   local okX, extra = pcall(Core.extraSpellsDiag)
   r.extraSpells = okX and extra or { error = tostring(extra) }
+  -- every skill line of the spellbook (name, offSpecID, shouldHide, items, passives) and the spent talents' spells
+  local okL, lines = pcall(C.spellbookLinesDiag)
+  r.spellbookLines = okL and lines or { error = tostring(lines) }
+  local okTS, tsp = pcall(Core.talentSpellsDiag)
+  r.talentSpells = okTS and tsp or { error = tostring(tsp) }
   -- the live talent tree (C_Traits, read-only): tools/read_log.py compares it with WoWBoxer's talent data
   local okTree, tree = pcall(C.talentTreeDump)
   if okTree and tree then
@@ -1366,6 +1387,10 @@ function Core.onEvent(event, ...)
     safeRegister("SPELLS_CHANGED")
     safeRegister("LEARNED_SPELL_IN_TAB")
     safeRegister("LEARNED_SPELL_IN_SKILL_LINE")
+    -- a talent spent or unlearned: All spells lists the talents' spells from the game (owner, 15 Nov 2026)
+    safeRegister("TRAIT_CONFIG_UPDATED")
+    safeRegister("PLAYER_TALENT_UPDATE")
+    safeRegister("CHARACTER_POINTS_CHANGED")
     Core.defaultBars()
     safeRegister("ACTIONBAR_SLOT_CHANGED")
     safeRegister("UPDATE_BINDINGS")
@@ -1411,11 +1436,12 @@ function Core.onEvent(event, ...)
     Core.log("info", "level up to " .. tostring(lvl))
     C.invalidateSpellbook()
     if C_Timer and C_Timer.After then C_Timer.After(1, function() Core.checkOffer("level " .. tostring(lvl)) end) else Core.checkOffer("level") end
-  elseif event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_TAB" or event == "LEARNED_SPELL_IN_SKILL_LINE" then
+  elseif event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_TAB" or event == "LEARNED_SPELL_IN_SKILL_LINE"
+      or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_TALENT_UPDATE" or event == "CHARACTER_POINTS_CHANGED" then
     C.invalidateSpellbook()
     if spellsTimer then return end
     spellsTimer = true
-    local function run() spellsTimer = nil; Core.checkOffer("spells") end
+    local function run() spellsTimer = nil; Core.checkOffer("spells"); if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end end
     if C_Timer and C_Timer.After then C_Timer.After(2, run) else run() end
   elseif event == "ACTIONBAR_SLOT_CHANGED" then
     -- many fire at once (page swaps, drags): rescan once, a moment later

@@ -25,7 +25,7 @@ local function E() return ns.Engine end
 function KE.spellChoices(m, L)
   local out = {}
   for _, s in ipairs(ns.Kit.customSpellsOf(m)) do
-    if ns.Kit.learned(m, s, L) and s.action ~= "passive" and s.action ~= "autoshot" and s.gate ~= "racial" and #(s.ranks or {}) > 0 then
+    if (ns.Kit.learned(m, s, L) or ns.Kit.gameTalent(m, s)) and s.action ~= "passive" and s.action ~= "autoshot" and s.gate ~= "racial" and #(s.ranks or {}) > 0 then
       out[#out + 1] = s
     end
   end

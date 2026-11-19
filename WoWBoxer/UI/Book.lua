@@ -295,6 +295,8 @@ end
 
 --- Tooltip line of a spell WoWBoxer only knows from the game's spellbook (not in its data).
 Book.FROM_BOOK = "From your spellbook"
+--- Tooltip line of a spell a talent the character has spent gives (the game's talents, not the plan).
+Book.FROM_TALENTS = "From your talents"
 --- "Rank 3 of 7 · next rank at 30" for a spell with ranks (nil without).
 function Book.rankLine(s, level)
   local ranks = s.ranks or {}
@@ -323,6 +325,9 @@ function Book.spellSections(ctx, q)
   local keyOf = {}
   for _, d in ipairs(ctx.desired) do if d.spell then keyOf[d.spell.id] = d end end
   local m, M = ctx.member, ns.Macros
+  local talents = ns.Kit.liveTalents(m)
+  local byId = {}
+  for _, s in ipairs(ns.Kit.spellsOf(m)) do byId[s.id] = s end
   local function cell(s, pending)
     local d = keyOf[s.id]
     local key = d and d.name
@@ -341,21 +346,38 @@ function Book.spellSections(ctx, q)
       sub = "|cffb7f07aNew at " .. ctx.level .. "|r" .. (sub ~= "" and (" · " .. sub) or "")
       word = "New at level " .. ctx.level .. " · " .. word
     end
-    return { kind = "spell", label = s.name, sub = sub, color = col, icon = s.icon, spell = s, name = key or false, st = { word = word, color = col } }
+    return { kind = "spell", label = s.name, sub = sub, color = col, icon = s.icon, spell = s, name = key or false, st = { word = word, color = col },
+      fromTalents = (s.fromTalents or talents.names[s.name]) and true or nil }
   end
   local lists = ns.Kit.kitLists(m)
   local shown = {}
+  local later = {}
+  -- with the game's talents at hand, a talent spell is learned only when the game says so (owner, 15 Nov 2026)
+  local function notSpent(s)
+    return talents.live and ctx.live and s.gate == "talent" and not ctx.live(s.name, s) and not ns.Kit.gameTalent(m, s)
+  end
   for _, l in ipairs({ lists.primary, lists.others }) do
-    for _, s in ipairs(l) do shown[s] = true; if Book.matches(s, q) then learned.cells[#learned.cells + 1] = cell(s, M.pendingOf(m, s, ctx.level, ctx.live)) end end
+    for i, s in ipairs(l) do
+      local base = byId[s.id] or s
+      shown[base] = true
+      if talents.shadow[base] then -- renamed in the game: its talent card stands for it
+      elseif notSpent(s) then
+        local p = M.pendingOf(m, s, ctx.level, ctx.live)
+        if type(p) == "number" and Book.matches(s, q) then later[#later + 1] = { s = s, p = p, i = i } end
+      elseif Book.matches(s, q) then learned.cells[#learned.cells + 1] = cell(s, M.pendingOf(m, s, ctx.level, ctx.live)) end
+    end
   end
   -- the wand's Shoot (mage, priest, warlock): a spell like the others, drag it to make an own macro
   local wand = ns.Kit.wandOf(m)
   if wand and Book.matches(wand, q) then learned.cells[#learned.cells + 1] = cell(wand, nil) end
-  local later = {}
   -- spells of the live spellbook the data lacks (owner, 10 Nov 2026): learned ones here, the book's future ones below
   local book = ns.Kit.bookSpells(m)
   for _, s in ipairs(book) do
     if not s.future and Book.matches(s, q) then local c = cell(s, nil); c.fromBook = true; learned.cells[#learned.cells + 1] = c end
+  end
+  -- the spells of the talents really spent that the data lacks (or names otherwise): the game's name, icon and id
+  for _, s in ipairs(talents.spells) do
+    if Book.matches(s, q) then learned.cells[#learned.cells + 1] = cell(s, nil) end
   end
   for i, s in ipairs(book) do
     if s.future and Book.matches(s, q) then
@@ -364,7 +386,7 @@ function Book.spellSections(ctx, q)
     end
   end
   for i, s in ipairs(ns.Kit.spellsOf(m)) do
-    if not shown[s] and s.action ~= "passive" and Book.matches(s, q) then
+    if not shown[s] and not talents.shadow[s] and s.action ~= "passive" and Book.matches(s, q) then
       local p = M.pendingOf(m, s, ctx.level, ctx.live)
       if p == nil then learned.cells[#learned.cells + 1] = cell(s, nil) -- known already (the data says later)
       elseif type(p) == "number" then later[#later + 1] = { s = s, p = p, i = i } end
@@ -687,6 +709,7 @@ local function cellTooltip(GT, c)
   local sp = c.spell or (d and d.spell)
   if sp then local rl = Book.rankLine(sp, ns.Compat.playerLevel()); if rl then GT:AddLine(rl, 0.8, 0.8, 0.8, true) end end
   if sp and sp.fromBook then GT:AddLine(Book.FROM_BOOK, 0.66, 0.78, 0.9, true) end
+  if c.fromTalents or (sp and sp.fromTalents) then GT:AddLine(Book.FROM_TALENTS, 0.66, 0.78, 0.9, true) end
   if d and d.body then for line in (d.body .. "\n"):gmatch("([^\n]*)\n") do if line ~= "" then GT:AddLine(line, 0.56, 0.85, 0.45) end end end
   if c.item and c.item.why then GT:AddLine(c.item.why, 1, 0.54, 0.5, true) end
   local slotLine = c.item and Book.slotText(c.item)
