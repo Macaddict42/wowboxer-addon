@@ -1,5 +1,11 @@
 # WoWBoxer addon – backlog
 
+## The owner: TEST BUILD 1.3.0-test.13 – talent spells in All spells (/reload is enough)
+1. Rip and Rup: All spells → every active spell from your spent talents is there (tooltip *From your talents*), each one once.
+2. Drag one onto a bar, and right-click → Edit macro… on another: both work.
+3. Spend or reset a talent point → All spells updates without a /reload.
+4. /reload on both → I read diag.talentSpells and the spellbook skill lines.
+
 ## The owner: TEST BUILD 1.3.0-test.12 – tooltip flicker at the bar ends (restart the Forever clients – a new file, /reload is not enough)
 1. Hover the outer buttons at the right end of the bottom bars (near bags / XP bar / team panel) → the tooltip should stay put.
 2. If it still flickers: keep the mouse on that button, type `/wbx probe hover`, hold still 5 s until "probe done", then /reload.
