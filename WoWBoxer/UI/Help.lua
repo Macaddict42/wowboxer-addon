@@ -72,6 +72,10 @@ Help.PAGES = {
   automation = { tip = { "Squad automation: one tick each.", "Accept from: who it reacts to.", "Hold Shift to skip once." },
     callouts = function() local p = UI.panels.automation
       return { { p.from, "Who it accepts from" }, { p.ticks[1], "One tick per automation" }, { p.preset, "One click: default squad values" } } end },
+  gather = { tip = { "Herbs and veins your squad finds, on your minimap.", "Nearby detection: Apply on every character.", "Gathered nodes vanish for everyone." },
+    callouts = function() local p = UI.panels.gather
+      return { { p.ticks[1], "Share what this character finds" }, { p.ticks[2], "Pins on this minimap" }, { p.apply, "Turn on nearby detection" },
+        { p.status, "What it sees now" } } end },
   share = { tip = { "Move your squad between clients.", "A string holds no macro text or code." },
     callouts = function() local p = UI.panels.share
       return { { p.importSf, "Paste a string here" }, { p.importBtn, "Import after the preview" }, { p.exportSf, "Your squad as a string" },

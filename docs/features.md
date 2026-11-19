@@ -21,6 +21,10 @@ WoWBoxer runs in **WoW: Forever** and **Classic Era**. Free, no ads, open source
 - **Setup:** where your macros go, recommended game settings (with backup and restore), a multibox checklist and an
   addon check. Reminders you can turn off, and "Don't show again".
 - **Share** your squad with your other characters as a text string.
+- **Gather sharing** (Setup → Gathering…): herbs and veins your squad finds show up as pins on the leader's minimap (and
+  the world map if you want). Followers with Herbalism or Mining spot nodes near them by themselves, the spot where
+  someone gathers is shared, and gathered nodes disappear for everyone. Known spots are remembered; with Questie
+  installed you also see where nodes can grow. WoWBoxer never sweeps the minimap: it only reads what the game shows.
 
 ## What it never does
 - **One key press = one action on one character.** No input broadcasting, no key cloning between windows.
@@ -35,4 +39,4 @@ WoWBoxer runs in **WoW: Forever** and **Classic Era**. Free, no ads, open source
 
 ## Credits
 Talent data: Zephras (zephras.com), CC BY 4.0, changed by WoWBoxer; The Forever Era. World of Warcraft names and
-icons © Blizzard Entertainment.
+icons © Blizzard Entertainment. Gather sharing ports parts of PartyGatherRadar by Christophe Vandermeulen (MIT).

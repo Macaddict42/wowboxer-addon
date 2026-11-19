@@ -229,6 +229,19 @@ def main():
                           f"{(' (override of ' + str(it.get('base')) + ')') if it.get('base') else ''} rank {it.get('rank')}: {it.get('shown')}")
             elif isinstance(ts, dict) and ts.get("error"):
                 print(f"   talent spells: error {ts.get('error')}")
+            ga = d.get("gather")
+            if isinstance(ga, dict) and not ga.get("error"):
+                pr, st, nr = ga.get("probe") or {}, ga.get("stats") or {}, ga.get("near") or {}
+                prof = ga.get("professions") or {}
+                print(f"   gather: on {ga.get('on')} soft target {'on' if ga.get('softOn') else 'off'}; probe {pr}")
+                print(f"     professions herb={prof.get('herb')} mine={prof.get('mine')}; soft interact saw herbs {nr.get('H')}, veins {nr.get('O')}, "
+                      f"other {nr.get('other')}; found near {st.get('near')}, gathered {st.get('gathered')}, hover {st.get('hover')}; "
+                      f"sent {st.get('sent')}, received {st.get('received')}, dropped {st.get('dropped')}; live {ga.get('live')}, known {ga.get('spots')}"
+                      f"{('; no data from ' + ', '.join(ga.get('silent'))) if ga.get('silent') else ''}")
+                if not prof.get('herb') and nr.get('H'):
+                    print("     -> AFKLAR answered: soft interact sees herbs WITHOUT Herbalism on this character")
+            elif isinstance(ga, dict):
+                print(f"   gather: error {ga.get('error')}")
             au = d.get("auto") if isinstance(d.get("auto"), dict) else {}
             if "abandonHooks" in au:
                 hk = au.get("abandonHooks") or {}

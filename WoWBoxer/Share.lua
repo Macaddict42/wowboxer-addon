@@ -55,7 +55,8 @@ function Sh.validate(v, game)
   local cvars = {}
   if type(v.cvars) == "table" then
     for k, val in pairs(v.cvars) do
-      if R.CVAR_BY_NAME[k] and R.cleanCVarValue(val) then cvars[k] = R.cleanCVarValue(val)
+      -- the soft-target CVars (gather) are never imported: only Setup → Gathering → Apply sets them
+      if R.CVAR_BY_NAME[k] and not R.CVAR_BY_NAME[k].gather and R.cleanCVarValue(val) then cvars[k] = R.cleanCVarValue(val)
       else warn[#warn + 1] = "Setting " .. tostring(k) .. " is not on WoWBoxer's list and was ignored." end
     end
   end

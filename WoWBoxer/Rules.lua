@@ -90,6 +90,13 @@ for _, c in ipairs(R.CAST_CVARS) do
   R.CVARS[#R.CVARS + 1] = { name = c[1], leader = "1", follower = "1", label = c[2], cast = true,
     why = "Shows cast bars, so you see what your friends (and enemies) are casting." }
 end
+-- Gather sharing → Nearby detection (02_Spec/Gather-sharing-plan.md §4): the game's soft interact target. Never part
+-- of "Apply settings"; only Setup → Gathering → Apply sets them (after a click, out of combat, backup + restore).
+for _, c in ipairs({ { "SoftTargetInteract", "3", "Soft interact target" }, { "SoftTargetInteractArc", "2", "Soft target all around" },
+  { "SoftTargetInteractOnlyInRange", "0", "Soft target beyond reach" }, { "SoftTargetInteractRange", "15", "Soft target range" } }) do
+  R.CVARS[#R.CVARS + 1] = { name = c[1], gather = c[2], label = c[3],
+    why = "Nearby detection (Setup → Gathering): the game names the herb or vein in front of you. Your Interact keybind also targets nearby objects." }
+end
 R.CVAR_BY_NAME = {}
 for _, c in ipairs(R.CVARS) do R.CVAR_BY_NAME[c.name] = c end
 

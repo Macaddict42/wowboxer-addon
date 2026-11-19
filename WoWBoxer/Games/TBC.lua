@@ -11,6 +11,8 @@ if ns.dataGame ~= "tbc" then return end
 local D = ns.Data
 
 D.game = { key = "tbc", name = "TBC Anniversary", maxLevel = 70, maxPoints = 61, wowhead = "tbc", liveSpells = true }
+--- Gather sharing: the spell IDs of Herb Gathering and Mining (every rank); other IDs are matched by the spell's name.
+D.gather = { herb = { 2366, 2368, 3570, 11993, 28695 }, ore = { 2575, 2576, 3564, 10248, 29354 } }
 
 D.sequences = {
   warlock = {

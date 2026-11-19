@@ -76,10 +76,9 @@ function tab.build(p)
   p.copySet = W.button(p, "Copy settings", 120, 22, function() if ns.Settings then ns.Settings.send() end end,
     { "Copy settings", "WoWBoxer's settings are per WoW account, so with one account per character each one has its own. This sends this character's settings (Standard/Advanced, Automation, Accept from, quest reward, window size, animations, sequence strip, team panel, minimap button, reminders) to your squad in the party. Each character shows Use them / Ignore." })
   p.copySet:SetPoint("TOPLEFT", 0, -264)
-  p.copyHint = W.text(p, "GameFontHighlightSmall", nil, W.MUTED)
-  p.copyHint:SetPoint("LEFT", p.copySet, "RIGHT", 8, 0)
-  p.copyHint:SetText("to my other characters")
-  p.copyHint.wbxCopy = "hint"
+  p.gatherBtn = W.button(p, "Gathering…", 96, 22, function() UI.Select("gather") end,
+    "Gather sharing: herbs and veins your squad finds, on the leader's minimap (nearby detection, known spots, Questie spawn points).")
+  p.gatherBtn:SetPoint("LEFT", p.copySet, "RIGHT", 6, 0)
   -- Reset to default (docs/advanced-mode.md §5): a red text button at the bottom; opens a two-step window
   p.resetAll = CreateFrame("Button", nil, p)
   p.resetAll:SetSize(110, 18)

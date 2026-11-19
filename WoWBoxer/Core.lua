@@ -626,11 +626,13 @@ function Core.cvarPlan(overrides)
   local role = (m and not m.leader) and "follower" or "leader"
   local out = {}
   for _, c in ipairs(R.CVARS) do
-    local cur = C.getCVar(c.name)
-    local want = (overrides and overrides[c.name]) or c[role]
-    out[#out + 1] = { name = c.name, label = c.label, why = c.why, current = cur, want = want, exists = cur ~= nil,
-      backup = Core.cdb.cvarBackup[c.name], status = cur == nil and "missing" or (want == nil and "leave") or (tostring(cur) == want and "ok")
-        or ((Core.cdb.cvarStuck or {})[c.name] and "stuck") or "change" }
+    if not c.gather then -- the soft-target CVars: only Setup → Gathering → Apply changes them (Gather.applyCVars)
+      local cur = C.getCVar(c.name)
+      local want = (overrides and overrides[c.name]) or c[role]
+      out[#out + 1] = { name = c.name, label = c.label, why = c.why, current = cur, want = want, exists = cur ~= nil,
+        backup = Core.cdb.cvarBackup[c.name], status = cur == nil and "missing" or (want == nil and "leave") or (tostring(cur) == want and "ok")
+          or ((Core.cdb.cvarStuck or {})[c.name] and "stuck") or "change" }
+    end
   end
   return out, role
 end
@@ -1176,6 +1178,7 @@ function Core.selftest(quiet)
   r.ui = { dropdown = (ns.Widgets and ns.Widgets.hasBlizzardDropdown and ns.Widgets.hasBlizzardDropdown()) and "blizzard" or "own" }
   r.ui.helpPlate = (ns.Help and ns.Help.blizzard and ns.Help.blizzard()) and "blizzard" or "own"
   r.ui.helpUsed = ns.Help and ns.Help.diag or nil
+  if ns.Gather then local okG, gd = pcall(ns.Gather.diag); r.gather = okG and gd or { error = tostring(gd) } end
   local okX, extra = pcall(Core.extraSpellsDiag)
   r.extraSpells = okX and extra or { error = tostring(extra) }
   -- every skill line of the spellbook (name, offSpecID, shouldHide, items, passives) and the spent talents' spells
@@ -1214,6 +1217,7 @@ local HELP = {
   "/wbx bars – list where each macro is and its keybind",
   "/wbx keys – open the game's key bindings (Quick Keybind mode where available)",
   "/wbx team on|off – team status panel (display only: follow, target, mana of your other clients)",
+  "/wbx gather – gather sharing status (herbs and veins on the minimap); /wbx gather clear – forget the known spots",
   "/wbx sell [add|remove] [item] – your sell list (sold with Sell junk; shared with Share sell list)",
   "/wbx scale 0.9 – window size (0.7–1.3); /wbx reset – window back to the middle; /wbx reset all – Reset to default…",
   "/wbx show – list your macros and what would change",
@@ -1294,6 +1298,7 @@ function Core.slash(msg)
       chat(string.format("  %s: %d buttons, %d outside, %d under another bar (%s)", b.label, b.buttons, b.outside, b.covered, b.anchor))
     end
   elseif cmd == "sell" then if ns.Relay then ns.Relay.slash(rest) end
+  elseif cmd == "gather" then if ns.Gather then ns.Gather.slash(rest) end
   elseif cmd == "questcheck" or cmd == "qc" then if ns.Relay then ns.Relay.questStatus() end
   elseif cmd == "team" then
     -- one switch (Talex, #help 10 Nov: "team off" then "team on" did not bring the box back – `on and nil or false`
@@ -1405,6 +1410,7 @@ function Core.onEvent(event, ...)
     if ns.Equip and ns.Equip.Init then ns.Equip.Init() end
     if ns.Loot and ns.Loot.Init then ns.Loot.Init() end
     if ns.Relay and ns.Relay.Init then ns.Relay.Init() end
+    if ns.Gather and ns.Gather.Init then ns.Gather.Init() end
     if ns.BarFit and ns.BarFit.Init then ns.BarFit.Init() end
     if C_Timer and C_Timer.After then C_Timer.After(3, function() Core.checkOffer("login") end) end
     if C_Timer and C_Timer.After then C_Timer.After(6, function() local ok, err = pcall(Core.loginChecks); if not ok then Core.log("error", "login checks: " .. tostring(err)) end end) end

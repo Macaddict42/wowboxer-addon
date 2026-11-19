@@ -266,8 +266,9 @@ function UI.Build()
   for i, tab in ipairs(UI.tabs) do order[i] = tab end
   table.sort(order, function(x, y) return (UI.ORDER[x.key] or 99) < (UI.ORDER[y.key] or 99) end)
   UI.tabButtons, UI.panels = {}, {}
-  for i, tab in ipairs(order) do
-    UI.tabButtons[tab.key] = railRow(UI.rail, tab, i)
+  local row = 0
+  for _, tab in ipairs(order) do
+    if not tab.hidden then row = row + 1; UI.tabButtons[tab.key] = railRow(UI.rail, tab, row) end -- hidden = a page of another tab
     local p = CreateFrame("Frame", nil, pages)
     p:SetPoint("TOPLEFT", 10, -8)
     p:SetPoint("BOTTOMRIGHT", -10, 8)

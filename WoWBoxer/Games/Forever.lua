@@ -10,6 +10,8 @@ local D = ns.Data
 --- The game's rules: max level, talent points at max level, the Wowhead path of talent links, and whether the live
 --- spellbook alone decides which spells a character has (true where the data has no trainer levels for this game).
 D.game = { key = "forever", name = "WoW Forever", maxLevel = 60, maxPoints = 51, wowhead = "forever", liveSpells = false }
+--- Gather sharing: the spell IDs of Herb Gathering and Mining (every rank); other IDs are matched by the spell's name.
+D.gather = { herb = { 2366, 2368, 3570, 11993 }, ore = { 2575, 2576, 3564, 10248 } }
 
 D.sequences = {
   warlock = {

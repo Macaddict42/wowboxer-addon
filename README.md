@@ -53,13 +53,17 @@ races, sequences).
 
 ## Commands
 `/wbx` open · `/wbx sync` place all macros · `/wbx show` list macros · `/wbx bars` where each macro is ·
-`/wbx keys` game key bindings · `/wbx cvars` / `/wbx cvars restore` · `/wbx team on|off` · `/wbx sell add|remove [item]` · `/wbx minimap` ·
+`/wbx keys` game key bindings · `/wbx cvars` / `/wbx cvars restore` · `/wbx team on|off` · `/wbx gather` · `/wbx sell add|remove [item]` · `/wbx minimap` ·
 `/wbx scale 0.9` · `/wbx reset` · `/wbx selftest` · `/wbx log` · `/wbx debug` · `/wbx ?` (all commands) ·
 `/wbx discord` · `/wbx youtube` · `/wbx website` · `/wbx help` (help on Discord) · `/wbx report` (Report a problem)
 
 ## Credits and licence
 MIT licence. WoW Forever talent trees: Blizzard client tables, checked against Wowhead. Other data: Zephras
 (zephras.com), CC BY 4.0, changed by WoWBoxer; The Forever Era.
+Gather sharing ports parts of **PartyGatherRadar** 0.6.0 by Christophe Vandermeulen (MIT, © 2026): nearby detection,
+resource names, map maths, the minimap overlay, spawn points and known spots. The MIT notice is in the header of each
+ported file (`WoWBoxer/Gather*.lua`, `WoWBoxer/UI/GatherPins.lua`). Spawn points are read in game from QuestieDB
+(GPL-3) when it is installed; nothing of it is copied.
 World of Warcraft and its names and icons are © Blizzard Entertainment. WoWBoxer is a free fan project and is not
 affiliated with or endorsed by Blizzard.
 

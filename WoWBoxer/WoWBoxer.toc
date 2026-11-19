@@ -76,6 +76,11 @@ Auto.lua
 Equip.lua
 Loot.lua
 Relay.lua
+GatherGeo.lua
+GatherNames.lua
+GatherSpots.lua
+GatherSpawns.lua
+Gather.lua
 BarLayout.lua
 BarFit.lua
 Probe.lua
@@ -96,6 +101,8 @@ UI\Book.lua
 UI\TabTalents.lua
 UI\TabSetup.lua
 UI\Automation.lua
+UI\GatherPins.lua
+UI\TabGather.lua
 UI\TabSquad.lua
 UI\SquadPages.lua
 UI\TabShare.lua
