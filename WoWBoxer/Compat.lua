@@ -617,13 +617,28 @@ end
 -- Frames of the extra bars (same names in Classic Era and the modern UI). Bar 1 is always shown.
 local BAR_FRAME = { [61] = "MultiBarBottomLeft", [49] = "MultiBarBottomRight", [25] = "MultiBarRight", [37] = "MultiBarLeft",
   [145] = "MultiBar5", [157] = "MultiBar6", [169] = "MultiBar7" }
+-- Addons that draw their own action bars and hide Blizzard's frames (the same action slots, other buttons).
+C.BAR_ADDONS = { "EllesmereUIActionBars", "Bartender4", "Dominos", "ElvUI", "NDui", "Neuron", "RealUI" }
+--- The loaded addon that replaces Blizzard's action bars, or nil.
+function C.barAddon()
+  local f = (G.C_AddOns and G.C_AddOns.IsAddOnLoaded) or G.IsAddOnLoaded
+  if not f then return nil end
+  for _, n in ipairs(C.BAR_ADDONS) do
+    local ok, loaded = pcall(f, n)
+    if ok and loaded == true then return n end
+  end
+  return nil
+end
 --- false when the bar starting at `first` exists but is hidden (not enabled in the interface options / Edit Mode).
+--- With a bar addon (C.barAddon) Blizzard's bar frames are hidden by that addon, whatever its own bars show: then a
+--- hidden frame says nothing, and the bar counts as on.
 function C.barVisible(first)
   local name = BAR_FRAME[first]
   local f = name and G[name]
   if not f or not f.IsShown then return true end
   local ok, shown = pcall(f.IsShown, f)
-  return not ok or shown == true
+  if not ok or shown == true then return true end
+  return C.barAddon() ~= nil
 end
 --- > 0 when action bar 1 shows a stance/form/stealth page instead of slots 1-12 (Warrior, Druid, Rogue ...).
 function C.bonusBarOffset()

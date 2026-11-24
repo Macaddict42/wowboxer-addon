@@ -341,6 +341,11 @@ do
   local step = function() return UI.panels.keys.stepText._text or "" end
   H.ok(step():find("Bottom Left Bar is turned off", 1, true) ~= nil, "hidden bar explained: " .. step())
   H.ok(findButton(W, "Pick bars") ~= nil, "with a button that leads to the fix")
+  -- a bar addon (EllesmereUI ActionBars, Bartender …) hides Blizzard's bar frames and draws its own: not "turned off"
+  W.addons.EllesmereUIActionBars = "loaded"
+  UI.Refresh()
+  H.ok(step():find("turned off", 1, true) == nil, "with a bar addon a hidden Blizzard bar isn't called turned off: " .. step())
+  W.addons.EllesmereUIActionBars = nil
   W.env.MultiBarBottomLeft:Show()
   Core.cdb.primaryBar = 1
   W.env.GetBonusBarOffset = function() return 1 end
