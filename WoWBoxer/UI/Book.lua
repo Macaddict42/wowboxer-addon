@@ -226,13 +226,17 @@ Book.FUTURE = { 0.62, 0.68, 0.86 }
 --- "At your trainer" / "Unlocks at 32" for M.pendingOf's value; nil when the spell is known.
 function Book.unlockText(pending)
   if pending == "trainer" then return "At your trainer" end
+  if pending == "talent" then return "Talent not taken now" end
   if type(pending) == "number" then return "Unlocks at " .. pending end
   return nil
 end
 local function pendingSt(pending, base)
-  local future = type(pending) == "number"
+  local future = type(pending) == "number" or pending == "talent"
+  local word = type(pending) == "number" and ("Unlocks at level " .. pending)
+    or pending == "talent" and "A talent you don't have right now (your other spec?): the macro works again once you do"
+    or "Learn it at your trainer"
   local st = { off = true, locked = future or nil, subColor = future and Book.FUTURE or Book.TRAINER,
-    word = future and ("Unlocks at level " .. pending) or "Learn it at your trainer", color = future and Book.FUTURE or Book.TRAINER }
+    word = word, color = future and Book.FUTURE or Book.TRAINER }
   if base then st.dot, st.dim = base.dot, base.dim end
   return st
 end

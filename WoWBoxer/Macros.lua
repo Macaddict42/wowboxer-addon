@@ -332,6 +332,9 @@ function M.desired(m, L, opts)
         if name then
           taken[name] = true
           local pending = M.pendingOf(m, s, L, live)
+          -- A talent you added that this spec doesn't have (dual spec: it's in your other spec, or your plan skips it)
+          -- keeps its macro too: it works again the moment you have the talent, so it's never "unused".
+          if pending == false and s.gate == "talent" then pending = "talent" end
           if pending ~= false then
             local xctx, sp = ctxFor(name), s
             out[#out + 1] = { key = "X:" .. s.id, name = name, group = "extra", label = s.name, body = E.makeMacro(s, xctx), spell = s,

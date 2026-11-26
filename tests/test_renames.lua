@@ -119,6 +119,36 @@ do
   end
 end
 
+-- ------------------------------------------------------------------ dual spec: talents of the other spec
+-- A talent spell you added from All spells keeps its macro when this spec doesn't have the talent (it is in your
+-- other spec): never "no longer used", never offered for removal.
+do
+  local W, ns = boot({ name = "Lock", class = "WARLOCK", race = "Scourge", level = 40 })
+  local Core, M = ns.Core, ns.Macros
+  ns.State.quickStart(Core.db, Core.cdb, Core.playerInfo())
+  local ctx = Core.compute()
+  local talent
+  for _, s in ipairs(ns.Data.spells.warlock) do
+    if not talent and s.gate == "talent" and s.action ~= "passive" and not ns.Engine.isPlain(s, ns.Kit.memberCtx(ctx.member))
+      and M.pendingOf(ctx.member, s, 40, ctx.live) == false then talent = s end -- (a macro, not the spell itself)
+  end
+  H.ok(talent ~= nil, "a talent spell this character doesn't have and its plan doesn't take: " .. tostring(talent and talent.name))
+  if talent then
+    Core.cdb.extras = { talent.id }
+    local d
+    for _, x in ipairs(Core.compute().desired) do if x.key == "X:" .. talent.id then d = x end end
+    H.ok(d ~= nil, "its macro is still wanted (it works again in the other spec)")
+    H.eq(d and d.pending, "talent", "marked as a talent not taken now")
+    if d then W.addMacro(d.name, d.body, true) end -- (made when you dragged it to your bar, in the other spec)
+    local m = Core.compute().macros
+    local unusedHas = false
+    for _, n in ipairs(m.unused or {}) do if d and n == d.name then unusedHas = true end end
+    H.ok(d and ns.Macros.findIndex(d.name) ~= nil, "its macro exists")
+    H.ok(not unusedHas, "and is not offered for removal")
+    H.eq(ns.Book.unlockText("talent"), "Talent not taken now", "the book says why it does nothing now")
+  end
+end
+
 -- ------------------------------------------------------------------ deleting an own macro takes its keybinds
 do
   local W, ns = boot({ name = "Lock", class = "WARLOCK", race = "Scourge", level = 20 })
