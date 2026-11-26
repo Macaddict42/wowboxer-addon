@@ -80,7 +80,15 @@ do
   local nExtras = #Core.cdb.extras
   H.ok(Core.pickupSpell(imp.id), "drag Summon Imp from All spells")
   H.ok(W.cursor and W.cursor.kind == "spell" and ns.Compat.isRankOf(W.cursor.id, imp), "Summon Imp: the spell on the cursor")
-  H.eq(#Core.cdb.extras, nExtras, "Summon Imp does not become an extra macro")
+  H.eq(#Core.cdb.extras, nExtras + 1, "Summon Imp is listed under Spells (an extra key)")
+  local impKey = desiredBy(Core.compute(), function(d) return d.key == "X:" .. imp.id end)
+  H.ok(impKey and impKey.plain, "as the spell itself: no macro")
+  H.eq(W.calls.CreateMacro or 0, made, "no macro made for Summon Imp")
+  local listed = false
+  for _, sec in ipairs(ns.Book.spread(Core.compute()).sections) do
+    for _, c in ipairs(sec.cells) do if impKey and c.name == impKey.name then listed = true end end
+  end
+  H.ok(listed, "Summon Imp shows in the Spells section")
   W.cursor = nil
   -- a spell with a target still makes a macro
   local sb = spell(ns, "warlock", "Corruption")
@@ -106,6 +114,17 @@ do
   local ov = desiredBy(Core.compute(), function(d) return d.name == plain.name end)
   H.ok(not ov.plain and ov.body:find("/cast", 1, true), "own targeting on a plain key: a macro again")
   Core.cdb.overrides[plain.name] = nil
+  -- removed, then dragged back from All spells: the spell itself on the cursor, back on the list
+  Core.cdb.skip[plain.name] = true
+  local gone = true
+  for _, c in ipairs(ns.Book.spread(Core.compute()).sections[1].cells) do if c.name == plain.name then gone = false end end
+  H.ok(gone, "a removed plain spell is gone from the Spells list")
+  W.cursor = nil
+  local ok, why = Core.pickup(plain.name)
+  H.ok(ok, "drag the removed plain spell back: " .. tostring(why))
+  H.ok(W.cursor and W.cursor.kind == "spell" and ns.Compat.isRankOf(W.cursor.id, plain.spell), "the spell itself on the cursor")
+  H.eq(Core.cdb.skip[plain.name], nil, "back on your list")
+  W.cursor = nil
 end
 
 -- ------------------------------------------------------------------ 1. an old WBX macro of a plain spell

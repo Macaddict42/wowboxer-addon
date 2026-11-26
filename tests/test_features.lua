@@ -131,10 +131,17 @@ do
   for _, b in ipairs(m.rows) do if b:IsShown() then labels[#labels + 1] = b.label._text end end
   H.eq(table.concat(labels, ", "), "Pick up, Set keybind…, Remove, Rename…, Edit macro… (Advanced mode), Copy…", "menu entries (Edit macro greyed in Standard)")
   m.rows[3]:Click()
-  H.ok(Core.cdb.skip["WBX K3"], "Leave out from the menu")
-  H.ok(row(ns, function(x) return x.name == "WBX K3" end).cell.st.off, "shown as left out (greyed)")
-  ns.Book.menuFor(UI.panels.keys, row(ns, function(x) return x.name == "WBX K3" end).cell)[3][2]()
-  H.eq(Core.cdb.skip["WBX K3"], nil, "Use again")
+  H.ok(Core.cdb.skip["WBX K3"], "Remove from the menu")
+  H.eq(row(ns, function(x) return x.name == "WBX K3" end), nil, "a removed spell is gone from the Spells list")
+  H.eq(ns.Macros.findIndex("WBX K3"), nil, "and its macro is deleted")
+  -- All spells still lists it; dragging it from there brings the same key back
+  local back
+  for _, c in ipairs(ns.Book.cells("spells", Core.compute())) do if c.name == "WBX K3" then back = c end end
+  H.ok(back ~= nil and back.st.word:find("Drag to your bar", 1, true), "All spells offers it again: " .. tostring(back and back.st.word))
+  H.ok(Core.pickup("WBX K3"), "drag it from All spells")
+  W.cursor = nil
+  H.eq(Core.cdb.skip["WBX K3"], nil, "it is back in your list")
+  H.ok(row(ns, function(x) return x.name == "WBX K3" end) ~= nil, "and on the Spells list again")
   H.eq(#errors(ns), 0, "no errors (drag): " .. table.concat(errors(ns), " | "))
 end
 

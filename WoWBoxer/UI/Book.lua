@@ -268,7 +268,9 @@ function Book.spread(ctx)
   local helperCell = {}
   for _, it in ipairs(ctx.macros.items) do
     local c = keyCell(ctx, it, desiredBy[it.name], barOf[it.name])
-    if it.group == "kit" or it.group == "extra" then table.insert(out.sections[1].cells, c)
+    if it.group == "kit" or it.group == "extra" then
+      -- a spell you removed is gone from the list (All spells → drag brings it back)
+      if it.status ~= "skipped" then table.insert(out.sections[1].cells, c) end
     elseif it.group == "sequence" then table.insert(out.sections[2].cells, c)
     elseif it.group == "helper" then helperCell[it.key] = c end
   end
@@ -343,7 +345,8 @@ end
 function Book.spellSections(ctx, q)
   local learned, future = { cells = {} }, { title = "Future spells", cells = {}, future = true }
   if not ctx then return { learned, future } end
-  local keyOf = {}
+  local keyOf, removed = {}, {}
+  for _, it in ipairs(ctx.macros.items) do if it.status == "skipped" then removed[it.name] = true end end
   for _, d in ipairs(ctx.desired) do if d.spell then keyOf[d.spell.id] = d end end
   local m, M = ctx.member, ns.Macros
   local talents = ns.Kit.liveTalents(m)
@@ -352,13 +355,14 @@ function Book.spellSections(ctx, q)
   local function cell(s, pending)
     local d = keyOf[s.id]
     local key = d and d.name
+    local gone = key and removed[key] -- removed from your list: dragging it brings it back (the same key)
     local sub, col, word
     if pending ~= nil then
       local st = pendingSt(pending)
-      if key then st.word = st.word .. " · already a macro" end
+      if key and not gone then st.word = st.word .. " · already a macro" end
       return { kind = "spell", label = s.name, sub = Book.unlockText(pending), icon = s.icon, spell = s, name = key or false, d = d, st = st, pending = pending }
     end
-    if key then
+    if key and not gone then
       local it
       for _, x in ipairs(ctx.macros.items) do if x.name == key then it = x end end
       sub, col, word = Book.kindName(it or { key = "" }), W.GREEN, (d.plain and "One of your spells (no macro)" or "Already a macro")

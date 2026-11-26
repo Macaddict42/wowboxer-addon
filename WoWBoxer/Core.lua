@@ -656,8 +656,19 @@ function Core.pickup(name)
   end
   if item.status == "noslot" then return false, "No free macro slot (character and general). Delete a macro in /macro first." end
   if item.status == "invalid" then return false, item.why or "invalid macro" end
+  local revived -- a removed key dragged back (All spells): it is on your list again
   if item.status == "create" or item.status == "update" or item.status == "skipped" then
-    if item.status == "skipped" then Core.cdb.skip[name] = nil; ctx = Core.compute(); for _, it in ipairs(ctx.macros.items) do if it.name == name then item = it end end end
+    if item.status == "skipped" then
+      Core.cdb.skip[name] = nil
+      ctx = Core.compute()
+      for _, it in ipairs(ctx.macros.items) do if it.name == name then item = it end end
+      if item.status == "spell" then -- a removed spell itself (no macro) comes back as the spell
+        local ok, err = Core.pickup(name)
+        Core.changed()
+        return ok, err
+      end
+      revived = true
+    end
     if item.status == "create" or item.status == "update" then
       local res = M.apply({ items = { item } })
       if #res.failed > 0 then return false, res.failed[1].err end
@@ -667,30 +678,29 @@ function Core.pickup(name)
   local idx = M.findIndex(name)
   if not idx then return false, "Macro not found." end
   B.pickupMacro(idx, "drag " .. name)
+  if revived then Core.changed() end
   return true
 end
 function Core.pickedSpell(ok) if ok then return true end return false, "Could not pick up the spell." end
---- Same for a spell from the spell list: it becomes an extra key "WBX <Spell>" (kept for this character).
+--- Same for a spell from the spell list: it becomes an extra key (kept for this character, listed under Spells). A
+--- spell that needs no target is the spell itself on the cursor (no macro), but it is listed all the same.
 function Core.pickupSpell(spellId)
   if C.inCombat() then return false, "Not in combat." end
-  local _, me = Core.me()
-  if me then
-    for _, s in ipairs(K.customSpellsOf(me)) do
-      if s.id == spellId and ns.Engine.isPlain(s, K.memberCtx(me)) then
-        local id = C.bestRankId(s)
-        if not id then return false, s.name .. " is not in your spellbook yet." end
-        return Core.pickedSpell(B.pickupSpell(id, "drag spell " .. s.name))
-      end
-    end
-  end
   local extras = Core.cdb.extras
   local have = false
   for _, id in ipairs(extras) do if id == spellId then have = true end end
   if not have then extras[#extras + 1] = spellId end
+  local function forget() if not have then table.remove(extras) end end
   local ctx, why = Core.compute()
-  if not ctx then return false, why end
-  for _, d in ipairs(ctx.desired) do if d.key == "X:" .. spellId then return Core.pickup(d.name) end end
-  if not have then table.remove(extras) end
+  if not ctx then forget(); return false, why end
+  for _, d in ipairs(ctx.desired) do
+    if d.key == "X:" .. spellId then
+      local ok, err = Core.pickup(d.name)
+      if not ok then forget() elseif not have then Core.changed() end
+      return ok, err
+    end
+  end
+  forget()
   return false, "That spell has no macro (passive, or not for this character and plan)."
 end
 --- Remember where the player put each WBX macro (any action slot), so Place all keeps it there.
